@@ -1,56 +1,88 @@
-# Welcome to your Expo app 👋
+# Penbook
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+An infinite-canvas teaching platform: teachers assign interactive lessons (PDFs,
+slides, images, links, blank pages), students write/draw/annotate/upload directly
+on them, and teachers see all of it happening live with real-time annotation,
+raise-hand, and reporting. See [ROADMAP.md](./ROADMAP.md) for how the full
+feature set maps onto what's implemented so far.
 
-## Get started
+## Stack
 
-1. Install dependencies
+- **App**: Expo SDK 57 (New Architecture), Expo Router, TypeScript, React Native Web
+- **Styling**: NativeWind (Tailwind for React Native)
+- **State**: Zustand (client/UI state) + TanStack Query (server state)
+- **Canvas**: `@shopify/react-native-skia` + `react-native-gesture-handler` +
+  `react-native-reanimated` for the infinite drawing surface
+- **Backend**: Supabase (Postgres, Auth, Realtime, Storage, Edge Functions, RLS)
 
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Getting started
 
 ```bash
-npm run reset-project
+npm install
+cp .env.example .env.local   # fill in your Supabase project URL + anon key
+npm run web                  # or `npm run ios` / `npm run android`
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Without `.env.local` configured, the app still boots (auth/data screens render
+in a clearly-labeled disconnected state) so you can review the UI before wiring
+up a backend.
 
-### Other setup steps
+### Setting up the Supabase backend
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+1. Create a Supabase project (via the [dashboard](https://supabase.com/dashboard)
+   or the Supabase MCP tools if you're driving this from an agent).
+2. Apply the schema in [`supabase/migrations/0001_init.sql`](./supabase/migrations/0001_init.sql):
+   ```bash
+   npx supabase link --project-ref <your-project-ref>
+   npx supabase db push
+   ```
+3. Copy your project URL + anon key into `.env.local`.
+4. Once schema changes settle, regenerate types to replace the hand-written
+   `src/types/database.ts`:
+   ```bash
+   npx supabase gen types typescript --project-id <your-project-ref> > src/types/database.ts
+   ```
 
-## Learn more
+The schema is RLS-first: teachers get full control over their own classes and
+assignments (plus co-teachers), students can only see published assignments for
+classes they've joined, and every student's submissions/strokes are readable by
+the teacher of that class and writable only by the student themselves (or the
+teacher, for annotation strokes). See the policies at the bottom of the
+migration file for the exact rules.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Project structure
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```
+src/
+  app/
+    (auth)/            sign-in, sign-up
+    (teacher)/          dashboard, assignments, classes, library, reports (tab group)
+    (student)/          home, assignments, portfolio (tab group)
+    canvas/[assignmentId].tsx   the infinite-canvas assignment view (student)
+    live/[assignmentId].tsx    the live monitoring dashboard (teacher)
+  components/
+    canvas/             InfiniteCanvas (Skia) + toolbar
+    teacher/            StudentTile (live grid)
+    ui/                 shared Button / TextField
+  hooks/
+    queries/            TanStack Query hooks, one per data need
+  store/                Zustand stores (auth session, canvas tool state)
+  lib/                  supabase client, query client, auth actions, join codes
+  types/database.ts     hand-written types mirroring the SQL schema
+supabase/
+  migrations/0001_init.sql   full schema + RLS policies
+```
 
-## Join the community
+## Scripts
 
-Join our community of developers creating universal apps.
+- `npm run web` / `ios` / `android` — run the app
+- `npm run lint` — ESLint (`eslint-config-expo`)
+- `npm run format` — Prettier (with `prettier-plugin-tailwindcss` class sorting)
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Deploying
+
+- **Mobile builds**: `eas build --profile preview` (see `eas.json` for profiles);
+  requires `npx eas login` and an Expo account.
+- **OTA updates**: `eas update --channel preview`
+- **Web**: `npx expo export -p web` then deploy the `dist/` folder to Vercel/Netlify,
+  or connect the repo directly for git-based deploys.

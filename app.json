@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "penbook",
+    "name": "Penbook",
     "slug": "penbook",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "penbook",
     "userInterfaceStyle": "automatic",

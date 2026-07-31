@@ -1,0 +1,874 @@
+// Generated from the live Supabase schema:
+//   npx supabase gen types typescript --project-id taehvowefldfuislimuf > src/types/database.ts
+// Re-run this after any migration in supabase/migrations/. Convenience aliases
+// at the bottom keep the rest of the app's imports (Profile, Assignment, ...)
+// stable across regenerations.
+
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: '14.15';
+  };
+  public: {
+    Tables: {
+      assignment_pages: {
+        Row: {
+          assignment_id: string;
+          created_at: string;
+          id: string;
+          position: number;
+          source_type: Database['public']['Enums']['page_source_type'];
+          source_url: string | null;
+          title: string | null;
+        };
+        Insert: {
+          assignment_id: string;
+          created_at?: string;
+          id?: string;
+          position: number;
+          source_type?: Database['public']['Enums']['page_source_type'];
+          source_url?: string | null;
+          title?: string | null;
+        };
+        Update: {
+          assignment_id?: string;
+          created_at?: string;
+          id?: string;
+          position?: number;
+          source_type?: Database['public']['Enums']['page_source_type'];
+          source_url?: string | null;
+          title?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'assignment_pages_assignment_id_fkey';
+            columns: ['assignment_id'];
+            isOneToOne: false;
+            referencedRelation: 'assignments';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      assignments: {
+        Row: {
+          available_from: string | null;
+          class_id: string;
+          created_at: string;
+          created_by: string;
+          current_page_id: string | null;
+          delivery_mode: Database['public']['Enums']['delivery_mode'];
+          description: string | null;
+          due_at: string | null;
+          id: string;
+          is_timed: boolean;
+          standards: string[];
+          status: Database['public']['Enums']['assignment_status'];
+          time_limit_seconds: number | null;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          available_from?: string | null;
+          class_id: string;
+          created_at?: string;
+          created_by: string;
+          current_page_id?: string | null;
+          delivery_mode?: Database['public']['Enums']['delivery_mode'];
+          description?: string | null;
+          due_at?: string | null;
+          id?: string;
+          is_timed?: boolean;
+          standards?: string[];
+          status?: Database['public']['Enums']['assignment_status'];
+          time_limit_seconds?: number | null;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          available_from?: string | null;
+          class_id?: string;
+          created_at?: string;
+          created_by?: string;
+          current_page_id?: string | null;
+          delivery_mode?: Database['public']['Enums']['delivery_mode'];
+          description?: string | null;
+          due_at?: string | null;
+          id?: string;
+          is_timed?: boolean;
+          standards?: string[];
+          status?: Database['public']['Enums']['assignment_status'];
+          time_limit_seconds?: number | null;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'assignments_class_id_fkey';
+            columns: ['class_id'];
+            isOneToOne: false;
+            referencedRelation: 'classes';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'assignments_created_by_fkey';
+            columns: ['created_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'assignments_current_page_fk';
+            columns: ['current_page_id'];
+            isOneToOne: false;
+            referencedRelation: 'assignment_pages';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      canvas_strokes: {
+        Row: {
+          author_id: string;
+          author_role: Database['public']['Enums']['stroke_author_role'];
+          color: string | null;
+          created_at: string;
+          id: string;
+          page_id: string;
+          points: Json;
+          stroke_width: number | null;
+          submission_id: string | null;
+          tool: string;
+        };
+        Insert: {
+          author_id: string;
+          author_role: Database['public']['Enums']['stroke_author_role'];
+          color?: string | null;
+          created_at?: string;
+          id?: string;
+          page_id: string;
+          points: Json;
+          stroke_width?: number | null;
+          submission_id?: string | null;
+          tool: string;
+        };
+        Update: {
+          author_id?: string;
+          author_role?: Database['public']['Enums']['stroke_author_role'];
+          color?: string | null;
+          created_at?: string;
+          id?: string;
+          page_id?: string;
+          points?: Json;
+          stroke_width?: number | null;
+          submission_id?: string | null;
+          tool?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'canvas_strokes_author_id_fkey';
+            columns: ['author_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'canvas_strokes_page_id_fkey';
+            columns: ['page_id'];
+            isOneToOne: false;
+            referencedRelation: 'assignment_pages';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'canvas_strokes_submission_id_fkey';
+            columns: ['submission_id'];
+            isOneToOne: false;
+            referencedRelation: 'submissions';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      class_members: {
+        Row: {
+          class_id: string;
+          joined_at: string;
+          student_id: string;
+        };
+        Insert: {
+          class_id: string;
+          joined_at?: string;
+          student_id: string;
+        };
+        Update: {
+          class_id?: string;
+          joined_at?: string;
+          student_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'class_members_class_id_fkey';
+            columns: ['class_id'];
+            isOneToOne: false;
+            referencedRelation: 'classes';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'class_members_student_id_fkey';
+            columns: ['student_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      classes: {
+        Row: {
+          created_at: string;
+          id: string;
+          join_code: string;
+          name: string;
+          organization_id: string | null;
+          teacher_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          join_code: string;
+          name: string;
+          organization_id?: string | null;
+          teacher_id: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          join_code?: string;
+          name?: string;
+          organization_id?: string | null;
+          teacher_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'classes_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'classes_teacher_id_fkey';
+            columns: ['teacher_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      co_teachers: {
+        Row: {
+          class_id: string;
+          teacher_id: string;
+        };
+        Insert: {
+          class_id: string;
+          teacher_id: string;
+        };
+        Update: {
+          class_id?: string;
+          teacher_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'co_teachers_class_id_fkey';
+            columns: ['class_id'];
+            isOneToOne: false;
+            referencedRelation: 'classes';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'co_teachers_teacher_id_fkey';
+            columns: ['teacher_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      help_requests: {
+        Row: {
+          assignment_id: string;
+          created_at: string;
+          id: string;
+          is_anonymous: boolean;
+          page_id: string | null;
+          resolved_at: string | null;
+          status: Database['public']['Enums']['help_request_status'];
+          student_id: string;
+        };
+        Insert: {
+          assignment_id: string;
+          created_at?: string;
+          id?: string;
+          is_anonymous?: boolean;
+          page_id?: string | null;
+          resolved_at?: string | null;
+          status?: Database['public']['Enums']['help_request_status'];
+          student_id: string;
+        };
+        Update: {
+          assignment_id?: string;
+          created_at?: string;
+          id?: string;
+          is_anonymous?: boolean;
+          page_id?: string | null;
+          resolved_at?: string | null;
+          status?: Database['public']['Enums']['help_request_status'];
+          student_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'help_requests_assignment_id_fkey';
+            columns: ['assignment_id'];
+            isOneToOne: false;
+            referencedRelation: 'assignments';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'help_requests_page_id_fkey';
+            columns: ['page_id'];
+            isOneToOne: false;
+            referencedRelation: 'assignment_pages';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'help_requests_student_id_fkey';
+            columns: ['student_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      leaderboard_entries: {
+        Row: {
+          assignment_id: string;
+          points: number;
+          streak: number;
+          student_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          assignment_id: string;
+          points?: number;
+          streak?: number;
+          student_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          assignment_id?: string;
+          points?: number;
+          streak?: number;
+          student_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'leaderboard_entries_assignment_id_fkey';
+            columns: ['assignment_id'];
+            isOneToOne: false;
+            referencedRelation: 'assignments';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'leaderboard_entries_student_id_fkey';
+            columns: ['student_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      library_items: {
+        Row: {
+          content: Json;
+          created_at: string;
+          description: string | null;
+          embedding: string | null;
+          id: string;
+          is_public: boolean;
+          organization_id: string | null;
+          owner_id: string | null;
+          standards: string[];
+          title: string;
+          type: Database['public']['Enums']['library_item_type'];
+        };
+        Insert: {
+          content?: Json;
+          created_at?: string;
+          description?: string | null;
+          embedding?: string | null;
+          id?: string;
+          is_public?: boolean;
+          organization_id?: string | null;
+          owner_id?: string | null;
+          standards?: string[];
+          title: string;
+          type: Database['public']['Enums']['library_item_type'];
+        };
+        Update: {
+          content?: Json;
+          created_at?: string;
+          description?: string | null;
+          embedding?: string | null;
+          id?: string;
+          is_public?: boolean;
+          organization_id?: string | null;
+          owner_id?: string | null;
+          standards?: string[];
+          title?: string;
+          type?: Database['public']['Enums']['library_item_type'];
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'library_items_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'library_items_owner_id_fkey';
+            columns: ['owner_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      lms_connections: {
+        Row: {
+          class_id: string;
+          created_at: string;
+          external_id: string;
+          id: string;
+          last_synced_at: string | null;
+          provider: Database['public']['Enums']['lms_provider'];
+        };
+        Insert: {
+          class_id: string;
+          created_at?: string;
+          external_id: string;
+          id?: string;
+          last_synced_at?: string | null;
+          provider: Database['public']['Enums']['lms_provider'];
+        };
+        Update: {
+          class_id?: string;
+          created_at?: string;
+          external_id?: string;
+          id?: string;
+          last_synced_at?: string | null;
+          provider?: Database['public']['Enums']['lms_provider'];
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'lms_connections_class_id_fkey';
+            columns: ['class_id'];
+            isOneToOne: false;
+            referencedRelation: 'classes';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      organizations: {
+        Row: {
+          created_at: string;
+          id: string;
+          name: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          name: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          name?: string;
+        };
+        Relationships: [];
+      };
+      profiles: {
+        Row: {
+          avatar_url: string | null;
+          created_at: string;
+          full_name: string;
+          id: string;
+          organization_id: string | null;
+          role: Database['public']['Enums']['user_role'];
+        };
+        Insert: {
+          avatar_url?: string | null;
+          created_at?: string;
+          full_name: string;
+          id: string;
+          organization_id?: string | null;
+          role?: Database['public']['Enums']['user_role'];
+        };
+        Update: {
+          avatar_url?: string | null;
+          created_at?: string;
+          full_name?: string;
+          id?: string;
+          organization_id?: string | null;
+          role?: Database['public']['Enums']['user_role'];
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'profiles_organization_id_fkey';
+            columns: ['organization_id'];
+            isOneToOne: false;
+            referencedRelation: 'organizations';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      questions: {
+        Row: {
+          correct_answer: Json | null;
+          created_at: string;
+          id: string;
+          options: Json;
+          page_id: string;
+          points: number;
+          position: number;
+          prompt: string;
+          type: Database['public']['Enums']['question_type'];
+        };
+        Insert: {
+          correct_answer?: Json | null;
+          created_at?: string;
+          id?: string;
+          options?: Json;
+          page_id: string;
+          points?: number;
+          position: number;
+          prompt: string;
+          type: Database['public']['Enums']['question_type'];
+        };
+        Update: {
+          correct_answer?: Json | null;
+          created_at?: string;
+          id?: string;
+          options?: Json;
+          page_id?: string;
+          points?: number;
+          position?: number;
+          prompt?: string;
+          type?: Database['public']['Enums']['question_type'];
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'questions_page_id_fkey';
+            columns: ['page_id'];
+            isOneToOne: false;
+            referencedRelation: 'assignment_pages';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      responses: {
+        Row: {
+          auto_score: number | null;
+          created_at: string;
+          id: string;
+          is_correct: boolean | null;
+          question_id: string;
+          response_data: Json;
+          submission_id: string;
+          time_spent_seconds: number;
+          updated_at: string;
+        };
+        Insert: {
+          auto_score?: number | null;
+          created_at?: string;
+          id?: string;
+          is_correct?: boolean | null;
+          question_id: string;
+          response_data?: Json;
+          submission_id: string;
+          time_spent_seconds?: number;
+          updated_at?: string;
+        };
+        Update: {
+          auto_score?: number | null;
+          created_at?: string;
+          id?: string;
+          is_correct?: boolean | null;
+          question_id?: string;
+          response_data?: Json;
+          submission_id?: string;
+          time_spent_seconds?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'responses_question_id_fkey';
+            columns: ['question_id'];
+            isOneToOne: false;
+            referencedRelation: 'questions';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'responses_submission_id_fkey';
+            columns: ['submission_id'];
+            isOneToOne: false;
+            referencedRelation: 'submissions';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      standards: {
+        Row: {
+          code: string;
+          description: string;
+          id: string;
+          subject: string | null;
+        };
+        Insert: {
+          code: string;
+          description: string;
+          id?: string;
+          subject?: string | null;
+        };
+        Update: {
+          code?: string;
+          description?: string;
+          id?: string;
+          subject?: string | null;
+        };
+        Relationships: [];
+      };
+      submissions: {
+        Row: {
+          assignment_id: string;
+          created_at: string;
+          id: string;
+          score: number | null;
+          started_at: string | null;
+          status: Database['public']['Enums']['submission_status'];
+          student_id: string;
+          submitted_at: string | null;
+          teacher_feedback: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          assignment_id: string;
+          created_at?: string;
+          id?: string;
+          score?: number | null;
+          started_at?: string | null;
+          status?: Database['public']['Enums']['submission_status'];
+          student_id: string;
+          submitted_at?: string | null;
+          teacher_feedback?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          assignment_id?: string;
+          created_at?: string;
+          id?: string;
+          score?: number | null;
+          started_at?: string | null;
+          status?: Database['public']['Enums']['submission_status'];
+          student_id?: string;
+          submitted_at?: string | null;
+          teacher_feedback?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'submissions_assignment_id_fkey';
+            columns: ['assignment_id'];
+            isOneToOne: false;
+            referencedRelation: 'assignments';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'submissions_student_id_fkey';
+            columns: ['student_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+    };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      [_ in never]: never;
+    };
+    Enums: {
+      assignment_status: 'draft' | 'published' | 'archived';
+      delivery_mode: 'teacher_paced' | 'student_paced' | 'front_of_class';
+      help_request_status: 'open' | 'acknowledged' | 'resolved';
+      library_item_type: 'quiz' | 'lesson' | 'activity' | 'video';
+      lms_provider: 'google_classroom' | 'canvas' | 'schoology' | 'clever';
+      page_source_type: 'blank_canvas' | 'pdf' | 'image' | 'slide' | 'video' | 'question' | 'link';
+      question_type:
+        | 'multiple_choice'
+        | 'true_false'
+        | 'short_answer'
+        | 'fill_blank'
+        | 'open_ended'
+        | 'draw'
+        | 'audio_response'
+        | 'video_response'
+        | 'drag_drop'
+        | 'matching'
+        | 'graphing'
+        | 'hotspot'
+        | 'labeling'
+        | 'reorder'
+        | 'poll';
+      stroke_author_role: 'student' | 'teacher';
+      submission_status: 'not_started' | 'in_progress' | 'submitted' | 'graded';
+      user_role: 'teacher' | 'student' | 'admin';
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
+  };
+};
+
+type DatabaseWithoutInternals = Omit<Database, '__InternalSupabase'>;
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, 'public'>];
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])[TableName] extends {
+      Row: infer R;
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
+    ? (DefaultSchema['Tables'] & DefaultSchema['Views'])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R;
+      }
+      ? R
+      : never
+    : never;
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    keyof DefaultSchema['Tables'] | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+      Insert: infer I;
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
+    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I;
+      }
+      ? I
+      : never
+    : never;
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    keyof DefaultSchema['Tables'] | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+      Update: infer U;
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
+    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U;
+      }
+      ? U
+      : never
+    : never;
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    keyof DefaultSchema['Enums'] | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums']
+    : never) = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums'][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema['Enums']
+    ? DefaultSchema['Enums'][DefaultSchemaEnumNameOrOptions]
+    : never;
+
+// ---------------------------------------------------------------------------
+// Convenience aliases used across the app — kept stable across regenerations.
+// ---------------------------------------------------------------------------
+
+export type UserRole = Enums<'user_role'>;
+export type DeliveryMode = Enums<'delivery_mode'>;
+export type AssignmentStatus = Enums<'assignment_status'>;
+export type PageSourceType = Enums<'page_source_type'>;
+export type QuestionType = Enums<'question_type'>;
+export type SubmissionStatus = Enums<'submission_status'>;
+export type StrokeAuthorRole = Enums<'stroke_author_role'>;
+export type HelpRequestStatus = Enums<'help_request_status'>;
+export type LibraryItemType = Enums<'library_item_type'>;
+export type LmsProvider = Enums<'lms_provider'>;
+
+export type StrokePoint = {
+  x: number;
+  y: number;
+  pressure?: number;
+};
+
+export type Profile = Tables<'profiles'>;
+export type ClassRow = Tables<'classes'>;
+export type ClassMember = Tables<'class_members'>;
+export type Assignment = Tables<'assignments'>;
+export type AssignmentPage = Tables<'assignment_pages'>;
+export type Question = Tables<'questions'>;
+export type Submission = Tables<'submissions'>;
+export type ResponseRow = Tables<'responses'>;
+export type CanvasStroke = Tables<'canvas_strokes'>;
+export type HelpRequest = Tables<'help_requests'>;
+export type Standard = Tables<'standards'>;
+export type LibraryItem = Tables<'library_items'>;
+export type LeaderboardEntry = Tables<'leaderboard_entries'>;
+export type LmsConnection = Tables<'lms_connections'>;
