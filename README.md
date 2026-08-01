@@ -13,6 +13,8 @@ feature set maps onto what's implemented so far.
 - **State**: Zustand (client/UI state) + TanStack Query (server state)
 - **Canvas**: `@shopify/react-native-skia` + `react-native-gesture-handler` +
   `react-native-reanimated` for the infinite drawing surface
+- **Slides**: `pdfjs-dist` renders uploaded PDFs to per-page images client-side (web only)
+  for the Lessons screen's slide viewer
 - **Backend**: Supabase (Postgres, Auth, Realtime, Storage, Edge Functions, RLS)
 
 ## Getting started
@@ -31,7 +33,9 @@ up a backend.
 
 1. Create a Supabase project (via the [dashboard](https://supabase.com/dashboard)
    or the Supabase MCP tools if you're driving this from an agent).
-2. Apply the schema in [`supabase/migrations/0001_init.sql`](./supabase/migrations/0001_init.sql):
+2. Apply the migrations in [`supabase/migrations/`](./supabase/migrations) in order
+   (`0001_init.sql` is the base schema; `0002`+ are incremental fixes and features —
+   see each file's header comment for what it does and why):
    ```bash
    npx supabase link --project-ref <your-project-ref>
    npx supabase db push
@@ -58,19 +62,29 @@ src/
     (auth)/            sign-in, sign-up
     (teacher)/          dashboard, assignments, classes, library, reports (tab group)
     (student)/          home, assignments, portfolio (tab group)
+    create-class.tsx    guided "term / grade / section / subject" class creation wizard
+    class/[classId].tsx the LearnFlow-style Lessons screen — a teacher's real day-to-day
+                         home once they have a class: week folders, file upload, PDF/image
+                         → slide conversion, slide viewer, activity tagging + timers
     canvas/[assignmentId].tsx   the infinite-canvas assignment view (student)
     live/[assignmentId].tsx    the live monitoring dashboard (teacher)
   components/
     canvas/             InfiniteCanvas (Skia) + toolbar
+    layout/             TeacherSidebar (the dark LearnFlow nav used by class/[classId])
+    onboarding/          SelectorColumn (used by the create-class wizard)
     teacher/            StudentTile (live grid)
     ui/                 shared Button / TextField
   hooks/
-    queries/            TanStack Query hooks, one per data need
+    queries/            TanStack Query hooks, one per data need (incl. use-lesson-resources,
+                         use-lesson-slides — the Lessons screen's data layer)
   store/                Zustand stores (auth session, canvas tool state)
-  lib/                  supabase client, query client, auth actions, join codes
-  types/database.ts     hand-written types mirroring the SQL schema
+  lib/                  supabase client, query client, auth actions, join codes,
+                         pdf-to-slides.ts (PDF.js rendering pipeline, web only)
+  types/database.ts     hand-written types mirroring the SQL schema — regenerate after
+                         every migration rather than hand-editing
 supabase/
-  migrations/0001_init.sql   full schema + RLS policies
+  migrations/          0001_init.sql is the base schema; see each later file's header
+                       comment for what it adds/fixes and why
 ```
 
 ## Scripts

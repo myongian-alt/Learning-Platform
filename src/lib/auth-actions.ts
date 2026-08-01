@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/auth-store';
 import type { UserRole } from '@/types/database';
 
 export async function signInWithPassword(email: string, password: string) {
@@ -16,10 +17,17 @@ export async function signUpWithPassword(
   if (error) throw error;
   if (!data.user) throw new Error('Sign up did not return a user.');
 
-  const { error: profileError } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .insert({ id: data.user.id, full_name: fullName, role });
+    .insert({ id: data.user.id, full_name: fullName, role })
+    .select()
+    .single();
   if (profileError) throw profileError;
+
+  // The auth listener's own profile fetch (triggered by the SIGNED_IN event) can race this
+  // insert and resolve first, finding no row yet. Push the row we just created directly so
+  // the store is correct regardless of that race.
+  useAuthStore.getState().setProfile(profile);
 }
 
 export async function signOut() {

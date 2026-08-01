@@ -69,6 +69,7 @@ export type Database = {
           time_limit_seconds: number | null;
           title: string;
           updated_at: string;
+          week_number: number | null;
         };
         Insert: {
           available_from?: string | null;
@@ -86,6 +87,7 @@ export type Database = {
           time_limit_seconds?: number | null;
           title: string;
           updated_at?: string;
+          week_number?: number | null;
         };
         Update: {
           available_from?: string | null;
@@ -103,6 +105,7 @@ export type Database = {
           time_limit_seconds?: number | null;
           title?: string;
           updated_at?: string;
+          week_number?: number | null;
         };
         Relationships: [
           {
@@ -225,27 +228,39 @@ export type Database = {
       classes: {
         Row: {
           created_at: string;
+          grade: string | null;
           id: string;
           join_code: string;
           name: string;
           organization_id: string | null;
+          section: string[] | null;
+          subject: string | null;
           teacher_id: string;
+          term: string | null;
         };
         Insert: {
           created_at?: string;
+          grade?: string | null;
           id?: string;
           join_code: string;
           name: string;
           organization_id?: string | null;
+          section?: string[] | null;
+          subject?: string | null;
           teacher_id: string;
+          term?: string | null;
         };
         Update: {
           created_at?: string;
+          grade?: string | null;
           id?: string;
           join_code?: string;
           name?: string;
           organization_id?: string | null;
+          section?: string[] | null;
+          subject?: string | null;
           teacher_id?: string;
+          term?: string | null;
         };
         Relationships: [
           {
@@ -384,6 +399,94 @@ export type Database = {
             columns: ['student_id'];
             isOneToOne: false;
             referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      lesson_resources: {
+        Row: {
+          class_id: string;
+          conversion_status: Database['public']['Enums']['lesson_conversion_status'];
+          created_at: string;
+          file_type: Database['public']['Enums']['lesson_file_type'];
+          id: string;
+          lesson_number: number;
+          size_bytes: number | null;
+          storage_path: string | null;
+          title: string;
+          updated_at: string;
+          week_number: number;
+        };
+        Insert: {
+          class_id: string;
+          conversion_status?: Database['public']['Enums']['lesson_conversion_status'];
+          created_at?: string;
+          file_type: Database['public']['Enums']['lesson_file_type'];
+          id?: string;
+          lesson_number?: number;
+          size_bytes?: number | null;
+          storage_path?: string | null;
+          title: string;
+          updated_at?: string;
+          week_number: number;
+        };
+        Update: {
+          class_id?: string;
+          conversion_status?: Database['public']['Enums']['lesson_conversion_status'];
+          created_at?: string;
+          file_type?: Database['public']['Enums']['lesson_file_type'];
+          id?: string;
+          lesson_number?: number;
+          size_bytes?: number | null;
+          storage_path?: string | null;
+          title?: string;
+          updated_at?: string;
+          week_number?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'lesson_resources_class_id_fkey';
+            columns: ['class_id'];
+            isOneToOne: false;
+            referencedRelation: 'classes';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      lesson_slides: {
+        Row: {
+          activity_tag: Database['public']['Enums']['slide_activity_tag'] | null;
+          created_at: string;
+          duration_minutes: number | null;
+          id: string;
+          position: number;
+          resource_id: string;
+          storage_path: string;
+        };
+        Insert: {
+          activity_tag?: Database['public']['Enums']['slide_activity_tag'] | null;
+          created_at?: string;
+          duration_minutes?: number | null;
+          id?: string;
+          position: number;
+          resource_id: string;
+          storage_path: string;
+        };
+        Update: {
+          activity_tag?: Database['public']['Enums']['slide_activity_tag'] | null;
+          created_at?: string;
+          duration_minutes?: number | null;
+          id?: string;
+          position?: number;
+          resource_id?: string;
+          storage_path?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'lesson_slides_resource_id_fkey';
+            columns: ['resource_id'];
+            isOneToOne: false;
+            referencedRelation: 'lesson_resources';
             referencedColumns: ['id'];
           },
         ];
@@ -714,6 +817,18 @@ export type Database = {
       assignment_status: 'draft' | 'published' | 'archived';
       delivery_mode: 'teacher_paced' | 'student_paced' | 'front_of_class';
       help_request_status: 'open' | 'acknowledged' | 'resolved';
+      lesson_conversion_status: 'none' | 'pending' | 'ready' | 'failed';
+      lesson_file_type: 'pdf' | 'pptx' | 'docx' | 'image' | 'video' | 'link';
+      slide_activity_tag:
+        | 'title_objectives'
+        | 'warm_up'
+        | 'main_idea'
+        | 'solved_examples'
+        | 'guided_practice'
+        | 'independent_activity'
+        | 'group_activity'
+        | 'challenge_extra'
+        | 'exit_ticket';
       library_item_type: 'quiz' | 'lesson' | 'activity' | 'video';
       lms_provider: 'google_classroom' | 'canvas' | 'schoology' | 'clever';
       page_source_type: 'blank_canvas' | 'pdf' | 'image' | 'slide' | 'video' | 'question' | 'link';
@@ -851,6 +966,9 @@ export type StrokeAuthorRole = Enums<'stroke_author_role'>;
 export type HelpRequestStatus = Enums<'help_request_status'>;
 export type LibraryItemType = Enums<'library_item_type'>;
 export type LmsProvider = Enums<'lms_provider'>;
+export type LessonFileType = Enums<'lesson_file_type'>;
+export type LessonConversionStatus = Enums<'lesson_conversion_status'>;
+export type SlideActivityTag = Enums<'slide_activity_tag'>;
 
 export type StrokePoint = {
   x: number;
@@ -872,3 +990,5 @@ export type Standard = Tables<'standards'>;
 export type LibraryItem = Tables<'library_items'>;
 export type LeaderboardEntry = Tables<'leaderboard_entries'>;
 export type LmsConnection = Tables<'lms_connections'>;
+export type LessonResource = Tables<'lesson_resources'>;
+export type LessonSlide = Tables<'lesson_slides'>;

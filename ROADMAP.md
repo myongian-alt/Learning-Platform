@@ -8,6 +8,24 @@ codebase today. Three states:
   soon" placeholder, or the mechanism is wired but minimal
 - 📋 **Planned** — not yet modeled; noted here so the next pass has a target
 
+## Class content: Lessons, slides & activity tagging
+
+This is a second content system, added alongside the original `assignments` /
+`assignment_pages` model above — it powers the class-scoped "Lessons" screen
+(`src/app/class/[classId].tsx`) rather than the per-assignment canvas flow.
+The two aren't reconciled yet (see note at the end of this section).
+
+| Feature                                                        | Status | Notes                                                                                                                                                                                                                                                                                        |
+| --------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Guided class creation (term/grade/multi-section/subject)       | ✅     | `create-class.tsx` wizard → `useCreateClassWizard`. `classes.section` is `text[]` (up to 6). Teacher lands here automatically on first sign-in (`(teacher)/dashboard.tsx` redirects when `classesQuery` is empty, or straight to the class when there's exactly one).                        |
+| Week-organized lesson library                                  | ✅     | `lesson_resources` (one row per uploaded file, `week_number` 1–15) + real Supabase Storage upload (`lesson-files` bucket) via `useLessonResources`. Opening a week folder shows an inline upload control and that week's files/slides — see `OpenWeekView`.                                   |
+| PDF/image → slide conversion                                   | ✅     | Client-side only (`src/lib/pdf-to-slides.ts`, PDF.js + canvas rendering — needs DOM APIs, so **web only**; native uploads skip conversion). One `lesson_slides` row per rendered page. `conversion_status` (`pending`/`ready`/`failed`) drives a "Retry" affordance for interrupted uploads. |
+| Slide viewer                                                    | ✅     | Thumbnail grid (numbered, tag-tinted) → tap opens a full-size viewer with Prev/Next paging, positioned at the tapped slide.                                                                                                                                                                    |
+| Rename / delete lesson files                                    | ✅     | Inline rename + confirm-delete on every file card; delete removes both the Storage objects and the DB rows.                                                                                                                                                                                    |
+| Activity tagging + per-slide timer                              | ✅     | 9 tags (Title/Objectives, Warm Up, Main Idea, Solved Examples, Guided Practice, Independent Activity, Group Activity, Challenge/Extra Activity, Exit Ticket), each with a color that lightly tints the slide background. Duration (0–20 min) + a real Start/Pause/Reset countdown per slide.  |
+| Student-facing slide/timer view                                 | 📋     | Everything above is teacher-only today. Presenting a tagged/timed slide to students (and syncing the countdown to their screens) isn't built — would likely reuse the `live/[assignmentId].tsx` Realtime pattern.                                                                            |
+| Reconcile with `assignments`/`assignment_pages`                 | 📋     | Two parallel "content" models now exist (assignment pages/canvas vs. lesson resources/slides). Worth deciding whether lessons become a `source_type` on `assignment_pages`, or assignments start referencing `lesson_resources`, before either grows much further.                          |
+
 ## Live classroom visibility & control
 
 | Feature                                                                                   | Status | Notes                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -42,7 +60,7 @@ codebase today. Three states:
 
 | Feature                                                                                                           | Status | Notes                                                                                                                                                                                                                                                                                                     |
 | ----------------------------------------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Import PDFs/slides/images/video/YouTube                                                                           | 🏗️     | `assignment_pages.source_type` enum covers all of these; `expo-image-picker` / `expo-document-picker` are installed for uploads. The actual upload-to-Supabase-Storage flow and PDF/slide _rendering_ inside a page aren't built yet — currently only `blank_canvas` pages render (via `InfiniteCanvas`). |
+| Import PDFs/slides/images/video/YouTube                                                                           | 🏗️     | Within `assignment_pages`/`InfiniteCanvas`, still only `blank_canvas` pages render. **Separately**, the newer `lesson_resources`/`lesson_slides` system (see "Class content" section above) *does* have working Storage upload + PDF/image → slide conversion — just not wired into the assignment/canvas flow yet. |
 | Embedded interactive elements (polls, Draw It, Collaborate Boards, Drag & Drop, Matching, quiz games, open-ended) | 📋     | Depends on the question-type renderers above.                                                                                                                                                                                                                                                             |
 | Rich media (interactive video, VR, 3D, simulations)                                                               | 📋     | Not modeled beyond `source_type: 'video'`.                                                                                                                                                                                                                                                                |
 | Three delivery modes (live participation, student-paced, front-of-class)                                          | 🏗️     | Same `delivery_mode` enum as above; front-of-class (project without student devices) has no dedicated "presenter" screen yet.                                                                                                                                                                             |
@@ -73,7 +91,7 @@ codebase today. Three states:
 | -------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Real-time + post-session analytics, misconceptions, standards alignment    | 📋     | `assignments.standards text[]` exists for alignment tagging; no analytics computation yet.                                                                                                                    |
 | Gradebook export + two-way LMS sync (Classroom, Canvas, Schoology, Clever) | 🏗️     | `lms_connections` table models the connection; no OAuth flows or sync jobs implemented.                                                                                                                       |
-| Rosters, class management, flexible deadlines                              | ✅     | `classes` + `class_members` + join-code flow are fully working (`(teacher)/classes`, `(student)/home` join-by-code). `assignments.available_from` / `due_at` model flexible deadlines; no UI to set them yet. |
+| Rosters, class management, flexible deadlines                              | ✅     | `classes` + `class_members` + join-code flow are fully working (`(teacher)/classes`, `(student)/home` join-by-code, guided creation wizard with term/grade/multi-section/subject). `assignments.available_from` / `due_at` model flexible deadlines; no UI to set them yet. |
 | Student/teacher/admin longitudinal views                                   | 📋     | Depends on analytics above.                                                                                                                                                                                   |
 
 ## Platform
@@ -88,6 +106,13 @@ codebase today. Three states:
 
 If continuing this build, the highest-leverage next steps are probably, in order:
 
-1. Question-type renderers (multiple_choice + short_answer + draw first — covers most quiz use cases) and the auto-grading function.
-2. Teacher-side canvas viewer that opens a specific student's submission and draws annotation strokes onto it — this is the other half of "live monitoring."
-3. Storage-backed uploads (PDF/image) rendered inside a page, using Supabase Storage + `expo-document-picker`/`expo-image-picker` (already installed).
+1. Decide how the `lesson_resources`/`lesson_slides` system (Lessons screen) and the
+   `assignments`/`assignment_pages` system (canvas/live-monitor) relate — right now
+   they're two independent content models built at different points in this project.
+2. Question-type renderers (multiple_choice + short_answer + draw first — covers most quiz use cases) and the auto-grading function.
+3. Teacher-side canvas viewer that opens a specific student's submission and draws annotation strokes onto it — this is the other half of "live monitoring."
+4. A student-facing view of tagged/timed slides (see "Class content" section) — the
+   teacher-side tagging/timer UI is done; presenting it live to students isn't.
+
+~~Storage-backed uploads (PDF/image) rendered inside a page~~ — done, via the Lessons
+screen's `lesson_resources`/`lesson_slides` (not yet inside the assignment canvas, per #1 above).

@@ -8,10 +8,24 @@ export function useCreateAssignment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ classId, title }: { classId: string; title: string }) => {
+    mutationFn: async ({
+      classId,
+      title,
+      weekNumber,
+    }: {
+      classId: string;
+      title: string;
+      weekNumber?: number;
+    }) => {
       const { data: assignment, error } = await supabase
         .from('assignments')
-        .insert({ class_id: classId, created_by: teacherId!, title, status: 'draft' })
+        .insert({
+          class_id: classId,
+          created_by: teacherId!,
+          title,
+          status: 'draft',
+          week_number: weekNumber,
+        })
         .select()
         .single();
       if (error) throw error;
