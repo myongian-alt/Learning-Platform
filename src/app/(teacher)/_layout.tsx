@@ -13,7 +13,6 @@ export default function TeacherLayout() {
     <Tabs screenOptions={{ headerShown: false, tabBarActiveTintColor: '#2b5cf0' }}>
       <Tabs.Screen name="dashboard" options={{ title: 'Dashboard' }} />
       <Tabs.Screen name="assignments/index" options={{ title: 'Assignments' }} />
-      <Tabs.Screen name="classes/index" options={{ title: 'Classes' }} />
       <Tabs.Screen name="library" options={{ title: 'Library' }} />
       <Tabs.Screen name="reports/index" options={{ title: 'Reports' }} />
     </Tabs>

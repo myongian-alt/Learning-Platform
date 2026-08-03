@@ -98,9 +98,7 @@ export default function CreateClassScreen() {
     setSubject(null);
   };
 
-  // Not the dashboard: it redirects back here whenever the teacher has zero
-  // classes, so closing to it would silently bounce right back.
-  const handleClose = () => router.replace('/(teacher)/classes');
+  const handleClose = () => router.replace('/classes');
 
   const handleCreate = () => {
     if (!term || !grade || sections.length === 0 || !subject) return;

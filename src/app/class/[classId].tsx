@@ -1,12 +1,14 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
-import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { TeacherSidebar, type SidebarItem } from '@/components/layout/teacher-sidebar';
+import { StudentClassView } from '@/components/class/student-class-view';
+import { TEACHER_SIDEBAR_ITEMS, TeacherSidebar } from '@/components/layout/teacher-sidebar';
+import { SLIDE_TAGS, SlideViewerModal } from '@/components/slides/slide-viewer';
 import { useClassAssignments } from '@/hooks/queries/use-class-assignments';
 import { useClassDetail } from '@/hooks/queries/use-class-detail';
 import { useClassRoster } from '@/hooks/queries/use-class-roster';
@@ -15,7 +17,7 @@ import { useLessonResources } from '@/hooks/queries/use-lesson-resources';
 import { useLessonSlides } from '@/hooks/queries/use-lesson-slides';
 import { signOut } from '@/lib/auth-actions';
 import { useAuthStore } from '@/store/auth-store';
-import type { LessonFileType, LessonResource, SlideActivityTag } from '@/types/database';
+import type { LessonFileType, LessonResource } from '@/types/database';
 
 const TOTAL_WEEKS = 15;
 const STORAGE_QUOTA_BYTES = 10 * 1024 * 1024 * 1024;
@@ -30,41 +32,6 @@ const FILE_TYPE_META: Record<LessonFileType, { icon: keyof typeof Feather.glyphM
   video: { icon: 'video', color: '#8b5cf6', label: 'Video' },
   link: { icon: 'link', color: '#64748b', label: 'Link' },
 };
-
-const SLIDE_TAGS: Record<SlideActivityTag, { label: string; color: string }> = {
-  title_objectives: { label: 'Title / Objectives', color: '#3b82f6' },
-  warm_up: { label: 'Warm Up', color: '#f59e0b' },
-  main_idea: { label: 'Main Idea', color: '#8b5cf6' },
-  solved_examples: { label: 'Solved Examples', color: '#10b981' },
-  guided_practice: { label: 'Guided Practice', color: '#06b6d4' },
-  independent_activity: { label: 'Independent Activity', color: '#ec4899' },
-  group_activity: { label: 'Group Activity', color: '#6366f1' },
-  challenge_extra: { label: 'Challenge / Extra Activity', color: '#ef4444' },
-  exit_ticket: { label: 'Exit Ticket', color: '#64748b' },
-};
-const SLIDE_TAG_ORDER = Object.keys(SLIDE_TAGS) as SlideActivityTag[];
-
-function formatTimer(totalSeconds: number) {
-  const m = Math.floor(totalSeconds / 60)
-    .toString()
-    .padStart(2, '0');
-  const s = Math.floor(totalSeconds % 60)
-    .toString()
-    .padStart(2, '0');
-  return `${m}:${s}`;
-}
-
-const SIDEBAR_ITEMS: SidebarItem[] = [
-  { key: 'classes', label: 'Classes', icon: 'grid' },
-  { key: 'lessons', label: 'Lessons', icon: 'book-open' },
-  { key: 'quizzes', label: 'Quizzis & Games', icon: 'award', ioniconOverride: 'game-controller-outline' },
-  { key: 'assignments', label: 'Assignments', icon: 'clipboard' },
-  { key: 'reports', label: 'Reports', icon: 'bar-chart-2' },
-  { key: 'gradebook', label: 'Gradebook', icon: 'book' },
-  { key: 'students', label: 'Students', icon: 'user' },
-  { key: 'groups', label: 'Groups', icon: 'users' },
-  { key: 'settings', label: 'Settings', icon: 'settings' },
-];
 
 type Section = 'lessons' | 'quizzes' | 'gradebook' | 'students' | 'groups' | 'settings';
 
@@ -122,7 +89,7 @@ export default function ClassLessonsScreen() {
   };
 
   const handleSidebarSelect = (key: string) => {
-    if (key === 'classes') return router.push('/(teacher)/classes');
+    if (key === 'classes') return router.push('/classes');
     if (key === 'assignments') return router.push('/(teacher)/assignments');
     if (key === 'reports') return router.push('/(teacher)/reports');
     setSection(key as Section);
@@ -179,7 +146,7 @@ export default function ClassLessonsScreen() {
   };
 
   if (profile?.role === 'student') {
-    return <Redirect href="/(student)/home" />;
+    return <StudentClassView classId={classId} />;
   }
 
   if (classQuery.isLoading) {
@@ -212,10 +179,23 @@ export default function ClassLessonsScreen() {
     .map((r) => new Date(r.updated_at ?? r.created_at).getTime())
     .sort((a, b) => b - a)[0];
 
+  // Fullscreen presentation mode — sidebar and right panel are unmounted entirely (not just
+  // covered by an overlay) so the slide can claim the vast majority of the window.
+  if (viewing) {
+    return (
+      <SlideViewerModal
+        resource={viewing.resource}
+        startIndex={viewing.startIndex}
+        onClose={() => setViewing(null)}
+        viewerRole="teacher"
+      />
+    );
+  }
+
   return (
     <View className="flex-1 flex-row bg-paper" style={{ paddingTop: insets.top }}>
       <TeacherSidebar
-        items={SIDEBAR_ITEMS}
+        items={TEACHER_SIDEBAR_ITEMS}
         activeKey={section}
         onSelect={handleSidebarSelect}
         teacherName={profile?.full_name ?? 'Teacher'}
@@ -322,14 +302,6 @@ export default function ClassLessonsScreen() {
         <View className="absolute bottom-16 right-6 rounded-xl bg-ink px-4 py-3 shadow-lg">
           <Text className="text-sm font-medium text-white">{flash}</Text>
         </View>
-      )}
-
-      {viewing && (
-        <SlideViewerModal
-          resource={viewing.resource}
-          startIndex={viewing.startIndex}
-          onClose={() => setViewing(null)}
-        />
       )}
     </View>
   );
@@ -880,225 +852,6 @@ function FileCard({ resource, actions }: { resource: LessonResource; actions: Fi
           </Pressable>
         </View>
       )}
-    </View>
-  );
-}
-
-function SlideViewerModal({
-  resource,
-  startIndex = 0,
-  onClose,
-}: {
-  resource: LessonResource;
-  startIndex?: number;
-  onClose: () => void;
-}) {
-  const { data: slides, isLoading, updateSlide } = useLessonSlides(resource.id);
-  const [index, setIndex] = useState(startIndex);
-  const slide = slides?.[index];
-  const total = slides?.length ?? 0;
-  const tag = slide?.activity_tag ? SLIDE_TAGS[slide.activity_tag] : null;
-
-  const toggleTag = (t: SlideActivityTag) => {
-    if (!slide) return;
-    updateSlide.mutate({ id: slide.id, activityTag: slide.activity_tag === t ? null : t });
-  };
-
-  return (
-    <View className="absolute inset-0 z-50 items-center justify-center bg-black/70 p-8">
-      <ScrollView
-        style={{ maxHeight: '100%' }}
-        contentContainerClassName="w-full max-w-3xl gap-3 rounded-2xl bg-white p-4"
-      >
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1 flex-row items-center gap-2">
-            <Text className="text-sm font-semibold text-ink" numberOfLines={1}>
-              {resource.title}
-            </Text>
-            {tag && (
-              <View
-                style={{ backgroundColor: `${tag.color}1f` }}
-                className="rounded-full px-2 py-0.5"
-              >
-                <Text style={{ color: tag.color }} className="text-[10px] font-semibold">
-                  {tag.label}
-                </Text>
-              </View>
-            )}
-          </View>
-          <Pressable onPress={onClose} className="p-1">
-            <Feather name="x" size={18} color="#4b5563" />
-          </Pressable>
-        </View>
-
-        {/* Activity tag picker — assigns the tag and tints the slide background. */}
-        <View className="flex-row flex-wrap gap-1.5">
-          {SLIDE_TAG_ORDER.map((t) => {
-            const meta = SLIDE_TAGS[t];
-            const active = slide?.activity_tag === t;
-            return (
-              <Pressable
-                key={t}
-                onPress={() => toggleTag(t)}
-                disabled={!slide}
-                style={{
-                  backgroundColor: active ? meta.color : `${meta.color}14`,
-                  borderColor: `${meta.color}55`,
-                }}
-                className="rounded-full border px-2.5 py-1"
-              >
-                <Text
-                  style={{ color: active ? '#fff' : meta.color }}
-                  className="text-[10px] font-semibold"
-                >
-                  {meta.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {/* Fixed height (not aspect-based) so the duration/timer row below always stays
-            within view instead of getting pushed off-screen on shorter windows. */}
-        <View
-          style={{ height: 320, backgroundColor: tag ? `${tag.color}12` : 'rgba(0,0,0,0.04)' }}
-          className="w-full items-center justify-center overflow-hidden rounded-xl"
-        >
-          {(isLoading || (!slide && total === 0)) && <ActivityIndicator />}
-          {slide?.url && (
-            <Image
-              source={{ uri: slide.url }}
-              style={{ width: '100%', height: '100%' }}
-              resizeMode="contain"
-            />
-          )}
-        </View>
-
-        {/* Duration + timer for this slide — keyed by slide id so switching slides
-            always mounts a fresh, stopped timer instead of syncing state via an effect. */}
-        {slide && (
-          <SlideTimer
-            key={slide.id}
-            durationMinutes={slide.duration_minutes}
-            onChangeDuration={(minutes) =>
-              updateSlide.mutate({ id: slide.id, durationMinutes: minutes || null })
-            }
-          />
-        )}
-
-        <View className="flex-row items-center justify-between">
-          <Pressable
-            onPress={() => setIndex((i) => Math.max(0, i - 1))}
-            disabled={index === 0}
-            style={{ opacity: index === 0 ? 0.3 : 1 }}
-            className="flex-row items-center gap-1.5 rounded-lg bg-black/5 px-3 py-2"
-          >
-            <Feather name="chevron-left" size={14} color="#4b5563" />
-            <Text className="text-xs font-medium text-ink/70">Prev</Text>
-          </Pressable>
-          <Text className="text-xs text-ink/50">
-            Slide {total === 0 ? 0 : index + 1} of {total}
-          </Text>
-          <Pressable
-            onPress={() => setIndex((i) => Math.min(total - 1, i + 1))}
-            disabled={index >= total - 1}
-            style={{ opacity: index >= total - 1 ? 0.3 : 1 }}
-            className="flex-row items-center gap-1.5 rounded-lg bg-black/5 px-3 py-2"
-          >
-            <Text className="text-xs font-medium text-ink/70">Next</Text>
-            <Feather name="chevron-right" size={14} color="#4b5563" />
-          </Pressable>
-        </View>
-      </ScrollView>
-    </View>
-  );
-}
-
-const MAX_SLIDE_MINUTES = 20;
-
-function SlideTimer({
-  durationMinutes,
-  onChangeDuration,
-}: {
-  durationMinutes: number | null;
-  onChangeDuration: (minutes: number) => void;
-}) {
-  // Tracked locally (seeded once from the prop at mount, via the parent's key={slide.id})
-  // rather than read from the prop on every click — the prop only reflects the server's
-  // value after the update round-trips back through React Query, so a quick run of clicks
-  // would otherwise each read the same stale value and clobber each other.
-  const [minutes, setMinutes] = useState(durationMinutes ?? 0);
-  const [seconds, setSeconds] = useState((durationMinutes ?? 0) * 60);
-  const [running, setRunning] = useState(false);
-
-  useEffect(() => {
-    if (!running) return;
-    const interval = setInterval(() => {
-      setSeconds((s) => {
-        if (s <= 1) {
-          setRunning(false);
-          return 0;
-        }
-        return s - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [running]);
-
-  const adjust = (delta: number) => {
-    const next = Math.max(0, Math.min(MAX_SLIDE_MINUTES, minutes + delta));
-    setMinutes(next);
-    onChangeDuration(next);
-    setSeconds(next * 60);
-    setRunning(false);
-  };
-
-  return (
-    <View className="flex-row items-center justify-between rounded-xl bg-black/[0.03] px-3 py-2.5">
-      <View className="flex-row items-center gap-2">
-        <Text className="text-xs text-ink/50">Duration</Text>
-        <Pressable
-          onPress={() => adjust(-1)}
-          className="h-6 w-6 items-center justify-center rounded-md bg-black/5"
-        >
-          <Feather name="minus" size={12} color="#4b5563" />
-        </Pressable>
-        <Text className="w-14 text-center text-xs font-semibold text-ink">
-          {minutes ? `${minutes} min` : 'None'}
-        </Text>
-        <Pressable
-          onPress={() => adjust(1)}
-          className="h-6 w-6 items-center justify-center rounded-md bg-black/5"
-        >
-          <Feather name="plus" size={12} color="#4b5563" />
-        </Pressable>
-      </View>
-
-      <View className="flex-row items-center gap-2">
-        <Feather name="clock" size={13} color={seconds === 0 ? '#9ca3af' : '#7c3aed'} />
-        <Text className={`text-sm font-bold ${seconds === 0 ? 'text-ink/30' : 'text-violet-700'}`}>
-          {formatTimer(seconds)}
-        </Text>
-        <Pressable
-          onPress={() => setRunning((r) => !r)}
-          disabled={seconds === 0}
-          style={{ opacity: seconds === 0 ? 0.4 : 1 }}
-          className="rounded-md bg-violet-600 px-2.5 py-1"
-        >
-          <Text className="text-[11px] font-semibold text-white">
-            {running ? 'Pause' : 'Start'}
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => {
-            setRunning(false);
-            setSeconds(minutes * 60);
-          }}
-          className="rounded-md bg-black/5 px-2.5 py-1"
-        >
-          <Text className="text-[11px] font-medium text-ink/60">Reset</Text>
-        </Pressable>
-      </View>
     </View>
   );
 }

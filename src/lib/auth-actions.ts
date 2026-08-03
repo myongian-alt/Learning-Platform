@@ -36,17 +36,18 @@ export async function signOut() {
 }
 
 export async function joinClassWithCode(joinCode: string, studentId: string) {
-  const { data: classRow, error: classError } = await supabase
-    .from('classes')
-    .select('id')
-    .eq('join_code', joinCode.trim().toUpperCase())
-    .single();
-  if (classError || !classRow) throw new Error('No class found with that code.');
+  // `classes` RLS only allows select for a teacher or an existing member, so a student who
+  // isn't in the class yet can't look it up directly by code — this RPC is a narrow,
+  // security-definer exception that resolves just the id for a valid code.
+  const { data: classId, error: lookupError } = await supabase.rpc('find_class_id_by_join_code', {
+    code: joinCode,
+  });
+  if (lookupError || !classId) throw new Error('No class found with that code.');
 
   const { error: joinError } = await supabase
     .from('class_members')
-    .insert({ class_id: classRow.id, student_id: studentId });
+    .insert({ class_id: classId, student_id: studentId });
   if (joinError) throw joinError;
 
-  return classRow.id;
+  return classId;
 }

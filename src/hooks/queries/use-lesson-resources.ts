@@ -174,7 +174,7 @@ export function useLessonResources(classId: string) {
 
       const paths = [
         ...(resource.storage_path ? [resource.storage_path] : []),
-        ...(slides ?? []).map((s) => s.storage_path),
+        ...(slides ?? []).map((s) => s.storage_path).filter((p): p is string => Boolean(p)),
       ];
       if (paths.length > 0) {
         await supabase.storage.from('lesson-files').remove(paths);

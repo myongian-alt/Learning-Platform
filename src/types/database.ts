@@ -456,30 +456,39 @@ export type Database = {
       lesson_slides: {
         Row: {
           activity_tag: Database['public']['Enums']['slide_activity_tag'] | null;
+          annotations: Json;
           created_at: string;
           duration_minutes: number | null;
           id: string;
+          objects: Json;
           position: number;
           resource_id: string;
-          storage_path: string;
+          storage_path: string | null;
+          submissions_enabled: boolean;
         };
         Insert: {
           activity_tag?: Database['public']['Enums']['slide_activity_tag'] | null;
+          annotations?: Json;
           created_at?: string;
           duration_minutes?: number | null;
           id?: string;
+          objects?: Json;
           position: number;
           resource_id: string;
-          storage_path: string;
+          storage_path?: string | null;
+          submissions_enabled?: boolean;
         };
         Update: {
           activity_tag?: Database['public']['Enums']['slide_activity_tag'] | null;
+          annotations?: Json;
           created_at?: string;
           duration_minutes?: number | null;
           id?: string;
+          objects?: Json;
           position?: number;
           resource_id?: string;
-          storage_path?: string;
+          storage_path?: string | null;
+          submissions_enabled?: boolean;
         };
         Relationships: [
           {
@@ -487,6 +496,57 @@ export type Database = {
             columns: ['resource_id'];
             isOneToOne: false;
             referencedRelation: 'lesson_resources';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      slide_submissions: {
+        Row: {
+          annotations: Json;
+          answers: Json;
+          grade: number | null;
+          id: string;
+          objects: Json;
+          slide_id: string;
+          student_id: string;
+          submitted_at: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          annotations?: Json;
+          answers?: Json;
+          grade?: number | null;
+          id?: string;
+          objects?: Json;
+          slide_id: string;
+          student_id: string;
+          submitted_at?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          annotations?: Json;
+          answers?: Json;
+          grade?: number | null;
+          id?: string;
+          objects?: Json;
+          slide_id?: string;
+          student_id?: string;
+          submitted_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'slide_submissions_slide_id_fkey';
+            columns: ['slide_id'];
+            isOneToOne: false;
+            referencedRelation: 'lesson_slides';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'slide_submissions_student_id_fkey';
+            columns: ['student_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
         ];
@@ -811,7 +871,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      find_class_id_by_join_code: {
+        Args: { code: string };
+        Returns: string;
+      };
     };
     Enums: {
       assignment_status: 'draft' | 'published' | 'archived';
@@ -992,3 +1055,4 @@ export type LeaderboardEntry = Tables<'leaderboard_entries'>;
 export type LmsConnection = Tables<'lms_connections'>;
 export type LessonResource = Tables<'lesson_resources'>;
 export type LessonSlide = Tables<'lesson_slides'>;
+export type SlideSubmission = Tables<'slide_submissions'>;

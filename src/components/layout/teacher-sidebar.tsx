@@ -9,6 +9,20 @@ export interface SidebarItem {
   ioniconOverride?: keyof typeof Ionicons.glyphMap;
 }
 
+// Shared across every teacher screen that shows this sidebar (the classes landing page and
+// each class's Lessons screen) so the nav list can't drift out of sync between them.
+export const TEACHER_SIDEBAR_ITEMS: SidebarItem[] = [
+  { key: 'classes', label: 'Classes', icon: 'grid' },
+  { key: 'lessons', label: 'Lessons', icon: 'book-open' },
+  { key: 'quizzes', label: 'Quizzis & Games', icon: 'award', ioniconOverride: 'game-controller-outline' },
+  { key: 'assignments', label: 'Assignments', icon: 'clipboard' },
+  { key: 'reports', label: 'Reports', icon: 'bar-chart-2' },
+  { key: 'gradebook', label: 'Gradebook', icon: 'book' },
+  { key: 'students', label: 'Students', icon: 'user' },
+  { key: 'groups', label: 'Groups', icon: 'users' },
+  { key: 'settings', label: 'Settings', icon: 'settings' },
+];
+
 interface TeacherSidebarProps {
   items: SidebarItem[];
   activeKey: string;

@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { useStudentAssignments } from '@/hooks/queries/use-student-assignments';
+import { useStudentClasses } from '@/hooks/queries/use-student-classes';
 import { joinClassWithCode, signOut } from '@/lib/auth-actions';
 import { useAuthStore } from '@/store/auth-store';
 
@@ -14,6 +15,7 @@ export default function StudentHomeScreen() {
   const profile = useAuthStore((s) => s.profile);
   const studentId = useAuthStore((s) => s.session?.user.id);
   const { data: assignments, isLoading } = useStudentAssignments();
+  const { data: classes } = useStudentClasses();
   const queryClient = useQueryClient();
 
   const [joinCode, setJoinCode] = useState('');
@@ -66,6 +68,19 @@ export default function StudentHomeScreen() {
           </View>
           {joinError && <Text className="text-sm text-red-600">{joinError}</Text>}
         </View>
+
+        {(classes?.length ?? 0) > 0 && (
+          <View className="gap-3">
+            <Text className="text-base font-semibold text-ink">Your classes</Text>
+            {classes?.map((classRow) => (
+              <Link key={classRow.id} href={`/class/${classRow.id}`} asChild>
+                <Pressable className="flex-row items-center justify-between rounded-2xl bg-white p-4 shadow-sm">
+                  <Text className="text-base font-semibold text-ink">{classRow.name}</Text>
+                </Pressable>
+              </Link>
+            ))}
+          </View>
+        )}
 
         <View className="gap-3">
           <Text className="text-base font-semibold text-ink">Assignments</Text>

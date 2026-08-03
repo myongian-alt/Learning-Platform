@@ -1,4 +1,4 @@
-import { Link, Redirect } from 'expo-router';
+import { Link } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -11,19 +11,6 @@ export default function TeacherDashboardScreen() {
   const profile = useAuthStore((s) => s.profile);
   const { classesQuery } = useTeacherClasses();
   const { data: assignments, isLoading } = useTeacherAssignments();
-
-  // First-run onboarding: a teacher with no classes yet lands on the guided
-  // "Create Your Class" wizard instead of an empty dashboard.
-  if (classesQuery.isSuccess && classesQuery.data.length === 0) {
-    return <Redirect href="/create-class" />;
-  }
-
-  // A teacher with exactly one class goes straight to its Lessons screen — that's the
-  // real day-to-day home now, not this stats overview. (With multiple classes there's no
-  // single obvious one to jump to, so this dashboard acts as the picker via the list below.)
-  if (classesQuery.isSuccess && classesQuery.data.length === 1) {
-    return <Redirect href={`/class/${classesQuery.data[0].id}`} />;
-  }
 
   const publishedCount = assignments?.filter((a) => a.status === 'published').length ?? 0;
   const openHelpRequests =

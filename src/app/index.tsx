@@ -37,8 +37,10 @@ export default function Index() {
     return <Redirect href="/(auth)/sign-in" />;
   }
 
+  // Lands on the classes list (create-a-class + everything already created), never on a
+  // specific class's Lessons screen — a teacher should always choose where to go next.
   if (profile && (profile.role === 'teacher' || profile.role === 'admin')) {
-    return <Redirect href="/(teacher)/dashboard" />;
+    return <Redirect href="/classes" />;
   }
 
   return <Redirect href="/(student)/home" />;
