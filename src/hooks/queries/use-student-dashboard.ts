@@ -9,6 +9,8 @@ import type { SlideAnswers, SlideObject } from './use-lesson-slides';
 
 export interface ClassWithProgress extends ClassRow {
   percentComplete: number;
+  completedSlides: number;
+  totalSlides: number;
 }
 
 export interface DueSoonItem {
@@ -182,6 +184,8 @@ export function useStudentDashboard() {
           ...c,
           percentComplete:
             bucket && bucket.total > 0 ? Math.round((bucket.done / bucket.total) * 100) : 0,
+          completedSlides: bucket?.done ?? 0,
+          totalSlides: bucket?.total ?? 0,
         };
       });
 

@@ -2,9 +2,10 @@ import { type Href, usePathname, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { DeskSidebar } from '@/components/layout/desk-sidebar';
 import { STUDENT_SIDEBAR_ITEMS } from '@/components/layout/student-sidebar';
-import { TeacherSidebar } from '@/components/layout/teacher-sidebar';
 import { useIsWideScreen } from '@/hooks/use-is-wide-screen';
+import { useStudentDashboard } from '@/hooks/queries/use-student-dashboard';
 import { signOut } from '@/lib/auth-actions';
 import { useAuthStore } from '@/store/auth-store';
 
@@ -33,21 +34,25 @@ export function StudentShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const profile = useAuthStore((s) => s.profile);
+  const dashboard = useStudentDashboard();
 
   if (!isWide) return <>{children}</>;
 
   const activeKey = KEY_BY_PATH[pathname] ?? 'home';
 
   return (
-    <View className="flex-1 flex-row bg-lf-canvas">
-      <TeacherSidebar
+    <View className="flex-1 flex-row bg-desk-canvas">
+      <DeskSidebar
         items={STUDENT_SIDEBAR_ITEMS}
         activeKey={activeKey}
         onSelect={(key) => router.push(ROUTE_BY_KEY[key] ?? ROUTE_BY_KEY.home)}
-        teacherName={profile?.full_name ?? 'Student'}
-        avatarUrl={profile?.avatar_url}
-        onProfilePress={() => signOut()}
+        onSelectClass={(classId) => router.push(`/class/${classId}` as Href)}
+        studentName={profile?.full_name ?? 'Student'}
         roleLabel="Student"
+        classes={dashboard.data?.classes ?? []}
+        streak={dashboard.data?.streak ?? 0}
+        todoCount={dashboard.data?.dueSoon.length ?? 0}
+        onProfilePress={() => signOut()}
       />
       <View className="flex-1">{children}</View>
     </View>
