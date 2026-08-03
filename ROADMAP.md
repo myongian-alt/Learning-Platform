@@ -23,8 +23,10 @@ The two aren't reconciled yet (see note at the end of this section).
 | Slide viewer                                                    | ✅     | Thumbnail grid (numbered, tag-tinted) → tap opens a full-size viewer with Prev/Next paging, positioned at the tapped slide.                                                                                                                                                                    |
 | Rename / delete lesson files                                    | ✅     | Inline rename + confirm-delete on every file card; delete removes both the Storage objects and the DB rows.                                                                                                                                                                                    |
 | Activity tagging + per-slide timer                              | ✅     | 9 tags (Title/Objectives, Warm Up, Main Idea, Solved Examples, Guided Practice, Independent Activity, Group Activity, Challenge/Extra Activity, Exit Ticket), each with a color that lightly tints the slide background. Duration (0–20 min) + a real Start/Pause/Reset countdown per slide.  |
-| Student-facing slide/timer view                                 | 📋     | Everything above is teacher-only today. Presenting a tagged/timed slide to students (and syncing the countdown to their screens) isn't built — would likely reuse the `live/[assignmentId].tsx` Realtime pattern.                                                                            |
-| Reconcile with `assignments`/`assignment_pages`                 | 📋     | Two parallel "content" models now exist (assignment pages/canvas vs. lesson resources/slides). Worth deciding whether lessons become a `source_type` on `assignment_pages`, or assignments start referencing `lesson_resources`, before either grows much further.                          |
+| Student-facing lesson experience (LearnFlow redesign)            | ✅     | Full student redesign against the LearnFlow spec: dashboard (stats/streak/badges/live banner, `use-student-dashboard.ts`), week-folder grid with lock/progress (`use-class-week-progress.ts`), week detail split into resources vs. activities (`use-week-activities.ts`), Grades screen (manual grade + feedback + auto-graded breakdown), Progress screen, To-do screen (merges lesson activities, legacy assignments, and recent feedback). See `src/app/(student)/`. |
+| Student-facing slide/timer view (live sync)                      | 🏗️     | A teacher's open slide viewer broadcasts over Supabase Realtime Presence (`use-live-class-session.ts`, no new tables) — students see a "LIVE NOW" banner and can toggle "Follow teacher" to sync the current slide index. **Not yet synced**: the per-slide countdown timer itself (`SlideTimer`'s start/pause state is still local-only per viewer) and teacher-drawn annotation strokes appearing live on a student's screen.                                                                            |
+| Reconcile with `assignments`/`assignment_pages`                 | 📋     | Two parallel "content" models still exist at the *data* level (assignment pages/canvas vs. lesson resources/slides) — unchanged by the LearnFlow redesign. What did change: the student's top-level nav no longer exposes both as separate tabs — legacy assignment due-items/scores are folded into the new unified To-do/Grades screens (`use-student-todo.ts`, `use-student-grades.ts`), so a student sees one To-do list and one Grades list regardless of which pipeline a given item came from. The underlying two-table-families question (whether lessons become a `source_type` on `assignment_pages`, or assignments start referencing `lesson_resources`) is still open. |
+| Quiz / Fill-in-the-blanks (lesson_slides pipeline)               | ✅     | `src/components/lessons/{quiz-view,fill-blanks-view}.tsx` — full-screen, one-at-a-time (quiz) / auto-checked (blanks) presentations of a slide's existing teacher-authored `multiple_choice`/`fill_blank` `SlideObject`s, with new client-side auto-grading (`lib/slide-grading.ts`). **Distinct from** the "Question types" row below, which is a *different*, still-unbuilt system on the `questions`/`assignments` pipeline — don't conflate the two when reconciling. |
 
 ## Live classroom visibility & control
 
@@ -82,7 +84,7 @@ The two aren't reconciled yet (see note at the end of this section).
 | ----------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------- |
 | Multiple input methods (draw, type, upload, record, select) | 🏗️     | Draw is implemented (`InfiniteCanvas`). Other input types are per-question-type UI (see above).           |
 | Peer collaboration / anonymous peer help                    | 📋     | Not modeled beyond the `is_anonymous` flag on `help_requests`.                                            |
-| Student portfolios                                          | 🏗️     | `(student)/portfolio` is a placeholder; data (`submissions`, `responses`) already supports building this. |
+| Student portfolios                                          | 🏗️     | `(student)/portfolio` is a placeholder; data (`submissions`, `responses`) already supports building this. No longer a top-level student tab (folded out in the LearnFlow nav redesign — the route file itself is untouched and still reachable). |
 | Accessibility (read-aloud, translations, accommodations)    | 📋     | Not started.                                                                                              |
 
 ## Analytics, rosters & LMS
@@ -107,12 +109,29 @@ The two aren't reconciled yet (see note at the end of this section).
 If continuing this build, the highest-leverage next steps are probably, in order:
 
 1. Decide how the `lesson_resources`/`lesson_slides` system (Lessons screen) and the
-   `assignments`/`assignment_pages` system (canvas/live-monitor) relate — right now
-   they're two independent content models built at different points in this project.
-2. Question-type renderers (multiple_choice + short_answer + draw first — covers most quiz use cases) and the auto-grading function.
-3. Teacher-side canvas viewer that opens a specific student's submission and draws annotation strokes onto it — this is the other half of "live monitoring."
-4. A student-facing view of tagged/timed slides (see "Class content" section) — the
-   teacher-side tagging/timer UI is done; presenting it live to students isn't.
+   `assignments`/`assignment_pages` system (canvas/live-monitor) relate at the *data*
+   level — the student-facing *nav* no longer exposes them as separate surfaces (see
+   "Class content" section), but they're still two independent table families
+   underneath. This is the same open question as before, just lower-urgency now that
+   the UI-level duplication is gone.
+2. Sync the per-slide countdown timer and teacher-drawn annotation strokes over the
+   same live-presence channel that already broadcasts "which slide" (`use-live-class-
+   session.ts`) — the channel/plumbing exists, only the timer-state and stroke-
+   streaming payloads are missing.
+3. Question-type renderers on the *other* pipeline (multiple_choice + short_answer +
+   draw first — covers most quiz use cases) and its auto-grading function. Note this
+   is separate from the quiz/fill-blank UI now built on `lesson_slides` (see "Class
+   content" section) — that one auto-grades client-side against `SlideObject`s, not
+   against `questions`/`responses`.
+4. Teacher-side canvas viewer that opens a specific student's submission and draws
+   annotation strokes onto it — this is the other half of "live monitoring."
+5. Persisted badges/streak (currently computed on read from `slide_submissions` each
+   time, not stored) if a real gamification system beyond the three computed badges
+   (Consistent Learner / Quiz Ace / Early Bird) is wanted.
 
 ~~Storage-backed uploads (PDF/image) rendered inside a page~~ — done, via the Lessons
 screen's `lesson_resources`/`lesson_slides` (not yet inside the assignment canvas, per #1 above).
+
+~~A student-facing view of tagged/timed slides~~ — done (see "Class content" section):
+full dashboard, week folders, quiz/blanks, grades, progress, to-do, and a live-presence
+banner. What's *not* synced live yet is called out in that section's notes (#2 above).
