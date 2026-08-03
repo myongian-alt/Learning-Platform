@@ -698,9 +698,10 @@ function SlideThumbnailGroup({
             <Pressable
               onPress={() => setSelectionMode(true)}
               accessibilityLabel="Select slides"
-              className="flex-row items-center gap-1"
+              className="flex-row items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1"
             >
-              <Feather name="check-square" size={12} color="#6b7280" />
+              <Feather name="check-square" size={12} color="#7c3aed" />
+              <Text className="text-[11px] font-semibold text-violet-700">Set pacing</Text>
             </Pressable>
             <Pressable
               onPress={() => setRenaming(true)}
