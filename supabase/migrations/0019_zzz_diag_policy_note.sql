@@ -1,0 +1,19 @@
+-- Documentation-only, deliberately a no-op.
+--
+-- The remote migration history (supabase_migrations.schema_migrations) has an
+-- entry `20260801164747 zzz_diag_policy`, applied 2026-08-01 between
+-- `class_multi_section` and `grant_private_schema_usage` — i.e. during the
+-- same session that tracked down the `classes` self-referencing RLS bug fixed
+-- by `0006_fix_classes_self_reference_rls.sql`. The "zzz"/"diag" naming and
+-- timing strongly suggest a temporary diagnostic policy created to isolate
+-- that bug, later superseded by the real fix.
+--
+-- Unlike the four remote-only migrations backfilled in 0014-0017 (where the
+-- current function/policy definitions could be read back from pg_proc/
+-- pg_policies and reproduced exactly), Supabase's migration history table
+-- only records the version/name, not the executed SQL — and whatever this
+-- migration created appears to have already been dropped or overwritten by
+-- later migrations, since no diagnostic-looking policy exists on `classes`
+-- today. There is nothing left to reconstruct. This file exists only so the
+-- gap in local migration numbering has an explanation on record, rather than
+-- silently going unremarked.
