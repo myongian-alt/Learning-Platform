@@ -7,7 +7,9 @@ import type { SlideAnswers, SlideObject, SlideStroke } from './use-lesson-slides
 
 // A submission row plus the student's display name, embedded via the profiles FK — needed
 // so the teacher's grading list can show who submitted instead of a bare student_id uuid.
-export type SlideSubmissionWithStudent = SlideSubmission & { profiles: { full_name: string } | null };
+export type SlideSubmissionWithStudent = SlideSubmission & {
+  profiles: { full_name: string } | null;
+};
 
 // Teacher-facing: every student's submission row for a slide, to show who has completed it.
 export function useSlideSubmissions(slideId: string | null) {
@@ -27,10 +29,16 @@ export function useSlideSubmissions(slideId: string | null) {
   });
 
   const setGrade = useMutation({
-    mutationFn: async (input: { submissionId: string; grade: number | null }) => {
+    mutationFn: async (input: {
+      submissionId: string;
+      grade: number | null;
+      feedback?: string | null;
+    }) => {
+      const patch: { grade: number | null; feedback?: string | null } = { grade: input.grade };
+      if ('feedback' in input) patch.feedback = input.feedback;
       const { error } = await supabase
         .from('slide_submissions')
-        .update({ grade: input.grade })
+        .update(patch)
         .eq('id', input.submissionId);
       if (error) throw error;
     },

@@ -1,11 +1,25 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { SlideCanvas, type SlideCanvasHandle, type SlideTool } from '@/components/canvas/slide-canvas';
+import {
+  SlideCanvas,
+  type SlideCanvasHandle,
+  type SlideTool,
+} from '@/components/canvas/slide-canvas';
 import { SlideObjectsLayer, type PendingObjectSpec } from '@/components/canvas/slide-objects-layer';
+import { FillBlanksView } from '@/components/lessons/fill-blanks-view';
+import { QuizView } from '@/components/lessons/quiz-view';
 import { GradeSlider } from '@/components/slides/grade-slider';
 import { useAddSlides } from '@/hooks/queries/use-add-slides';
 import {
@@ -16,7 +30,16 @@ import {
   type SlideStroke,
   type ViewableSlide,
 } from '@/hooks/queries/use-lesson-slides';
-import { useMySlideSubmission, useSlideSubmissions } from '@/hooks/queries/use-slide-submissions';
+import {
+  useLiveClassSessions,
+  useTeacherLivePresence,
+  type LiveSlidePayload,
+} from '@/hooks/queries/use-live-class-session';
+import {
+  useMySlideSubmission,
+  useSlideSubmissions,
+  type SlideSubmissionWithStudent,
+} from '@/hooks/queries/use-slide-submissions';
 import type { LessonResource, SlideActivityTag } from '@/types/database';
 
 export const SLIDE_TAGS: Record<SlideActivityTag, { label: string; color: string }> = {
@@ -71,10 +94,44 @@ export function SlideViewerModal({
   studentId?: string;
 }) {
   const insets = useSafeAreaInsets();
-  const { data: slides, isLoading, updateSlide, saveAnnotations, saveObjects } = useLessonSlides(resource.id);
+  const isTeacher = viewerRole === 'teacher';
+  const {
+    data: slides,
+    isLoading,
+    updateSlide,
+    saveAnnotations,
+    saveObjects,
+  } = useLessonSlides(resource.id);
   const [index, setIndex] = useState(startIndex);
-  const slide = slides?.[index];
   const total = slides?.length ?? 0;
+
+  // Student side: is a teacher currently presenting a slide from THIS resource, and is
+  // this student following along. Teacher side: broadcast which slide is open so any
+  // student's Home banner / lesson viewer can pick it up — see use-live-class-session.ts.
+  const live = useLiveClassSessions(!isTeacher ? [resource.class_id] : []);
+  const isLiveHere = !isTeacher && live?.resourceId === resource.id;
+  const [following, setFollowing] = useState(false);
+  const navLocked = following && isLiveHere;
+
+  // While following, the displayed slide tracks the teacher's broadcast index directly
+  // instead of mirroring it into `index` via an effect — `index` (and Prev/Next) resume
+  // from wherever local navigation last was once following turns off.
+  const effectiveIndex =
+    navLocked && live && total > 0 ? Math.min(live.slideIndex, total - 1) : index;
+  const slide = slides?.[effectiveIndex];
+
+  const teacherLivePayload: LiveSlidePayload | null =
+    isTeacher && slide
+      ? {
+          resourceId: resource.id,
+          resourceTitle: resource.title,
+          slideId: slide.id,
+          slideIndex: index,
+          totalSlides: total,
+          submissionsEnabled: slide.submissions_enabled,
+        }
+      : null;
+  useTeacherLivePresence(isTeacher ? resource.class_id : null, teacherLivePayload);
 
   return (
     <View className="absolute inset-0 z-50 bg-paper" style={{ paddingTop: insets.top }}>
@@ -84,7 +141,7 @@ export function SlideViewerModal({
         key={slide?.id ?? 'empty'}
         resource={resource}
         slide={slide ?? null}
-        index={index}
+        index={effectiveIndex}
         total={total}
         isLoading={isLoading}
         onClose={onClose}
@@ -95,6 +152,10 @@ export function SlideViewerModal({
         saveObjects={saveObjects}
         viewerRole={viewerRole}
         studentId={studentId}
+        live={isLiveHere ? live : null}
+        following={following}
+        onToggleFollowing={() => setFollowing((f) => !f)}
+        navLocked={navLocked}
       />
     </View>
   );
@@ -114,6 +175,10 @@ function SlideStage({
   saveObjects,
   viewerRole,
   studentId,
+  live,
+  following,
+  onToggleFollowing,
+  navLocked,
 }: {
   resource: LessonResource;
   slide: ViewableSlide | null;
@@ -128,14 +193,24 @@ function SlideStage({
   saveObjects: ReturnType<typeof useLessonSlides>['saveObjects'];
   viewerRole: SlideViewerRole;
   studentId?: string;
+  live: LiveSlidePayload | null;
+  following: boolean;
+  onToggleFollowing: () => void;
+  navLocked: boolean;
 }) {
   const isTeacher = viewerRole === 'teacher';
   const tag = slide?.activity_tag ? SLIDE_TAGS[slide.activity_tag] : null;
+  // `live` is already pre-filtered to "only set when it matches this resource" by the
+  // parent (see SlideViewerModal), so its mere presence means "live, here."
+  const isLiveHere = Boolean(live);
 
   // Own annotation layer for a student (separate from the teacher's authoring layer above),
   // and the completion roster for a teacher — each a no-op query when not relevant to this
   // viewer, since slide?.id may briefly be null between navigations.
-  const mySubmission = useMySlideSubmission(slide?.id ?? null, !isTeacher ? (studentId ?? null) : null);
+  const mySubmission = useMySlideSubmission(
+    slide?.id ?? null,
+    !isTeacher ? (studentId ?? null) : null,
+  );
   const submissions = useSlideSubmissions(isTeacher ? (slide?.id ?? null) : null);
   const submittedCount = submissions.data?.filter((s) => s.submitted_at).length ?? 0;
   const isSubmitted = Boolean(mySubmission.data?.submitted_at);
@@ -198,7 +273,9 @@ function SlideStage({
   const showTagPicker = isTeacher && (!tag || changingTag);
 
   const teacherAnnotations = (slide?.annotations as unknown as SlideStroke[]) ?? [];
-  const canvasStrokes = isTeacher ? teacherAnnotations : ((mySubmission.data?.annotations as unknown as SlideStroke[]) ?? []);
+  const canvasStrokes = isTeacher
+    ? teacherAnnotations
+    : ((mySubmission.data?.annotations as unknown as SlideStroke[]) ?? []);
   const handleCanvasChange = (strokes: SlideStroke[]) => {
     if (!slide) return;
     if (isTeacher) {
@@ -209,7 +286,9 @@ function SlideStage({
   };
 
   const teacherObjects = (slide?.objects as unknown as SlideObject[]) ?? [];
-  const myObjects = isTeacher ? teacherObjects : ((mySubmission.data?.objects as unknown as SlideObject[]) ?? []);
+  const myObjects = isTeacher
+    ? teacherObjects
+    : ((mySubmission.data?.objects as unknown as SlideObject[]) ?? []);
   const handleObjectsChange = (objects: SlideObject[]) => {
     if (!slide) return;
     if (isTeacher) {
@@ -234,6 +313,16 @@ function SlideStage({
     setMyAnswers(next);
     mySubmission.saveAnswers.mutate(next);
   };
+
+  // Quiz/Blanks are alternate full-screen presentations of the same teacher-authored
+  // question objects the inline layer already renders — not a separate content type.
+  const mcQuestions = teacherObjects.filter(
+    (o): o is Extract<SlideObject, { type: 'multiple_choice' }> => o.type === 'multiple_choice',
+  );
+  const blankQuestions = teacherObjects.filter(
+    (o): o is Extract<SlideObject, { type: 'fill_blank' }> => o.type === 'fill_blank',
+  );
+  const [overlay, setOverlay] = useState<'quiz' | 'blanks' | null>(null);
 
   const toolbarProps = {
     tool,
@@ -304,7 +393,10 @@ function SlideStage({
             }}
             className="rounded-full border px-2.5 py-1"
           >
-            <Text style={{ color: active ? '#fff' : meta.color }} className="text-[10px] font-semibold">
+            <Text
+              style={{ color: active ? '#fff' : meta.color }}
+              className="text-[10px] font-semibold"
+            >
               {meta.label}
             </Text>
           </Pressable>
@@ -361,8 +453,68 @@ function SlideStage({
       }`}
     >
       <Feather name={isSubmitted ? 'check-circle' : 'send'} size={13} color="#fff" />
-      <Text className="text-xs font-semibold text-white">{isSubmitted ? 'Submitted' : 'Submit'}</Text>
+      <Text className="text-xs font-semibold text-white">
+        {isSubmitted ? 'Submitted' : 'Submit'}
+      </Text>
     </Pressable>
+  );
+
+  const quizButton = !isTeacher && mcQuestions.length > 0 && (
+    <Pressable
+      onPress={() => setOverlay('quiz')}
+      className="flex-row items-center gap-1.5 rounded-full px-3 py-1.5"
+      style={{ backgroundColor: '#FCE7F3' }}
+    >
+      <Feather name="award" size={13} color="#BE185D" />
+      <Text className="text-xs font-bold" style={{ color: '#BE185D' }}>
+        Play quiz
+      </Text>
+    </Pressable>
+  );
+
+  const blanksButton = !isTeacher && blankQuestions.length > 0 && (
+    <Pressable
+      onPress={() => setOverlay('blanks')}
+      className="flex-row items-center gap-1.5 rounded-full px-3 py-1.5"
+      style={{ backgroundColor: '#CFFAFE' }}
+    >
+      <Feather name="edit-3" size={13} color="#0891B2" />
+      <Text className="text-xs font-bold" style={{ color: '#0891B2' }}>
+        Fill blanks
+      </Text>
+    </Pressable>
+  );
+
+  const liveToggle = isLiveHere && (
+    <View className="flex-row items-center gap-1 rounded-full bg-black/[0.03] p-1">
+      <Pressable
+        onPress={() => following && onToggleFollowing()}
+        className={`rounded-full px-2.5 py-1 ${!following ? 'bg-white shadow-sm' : ''}`}
+      >
+        <Text className={`text-[11px] font-bold ${!following ? 'text-ink' : 'text-ink/40'}`}>
+          Self-paced
+        </Text>
+      </Pressable>
+      <Pressable
+        onPress={() => !following && onToggleFollowing()}
+        className="rounded-full px-2.5 py-1"
+        style={{ backgroundColor: following ? '#7C3AED' : 'transparent' }}
+      >
+        <Text
+          className="text-[11px] font-bold"
+          style={{ color: following ? '#fff' : 'rgba(0,0,0,0.4)' }}
+        >
+          Follow teacher
+        </Text>
+      </Pressable>
+    </View>
+  );
+
+  const liveTag = isLiveHere && (
+    <View className="flex-row items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1">
+      <View className="h-1.5 w-1.5 rounded-full bg-red-500" />
+      <Text className="text-[10px] font-bold text-red-600">LIVE · your teacher is presenting</Text>
+    </View>
   );
 
   return (
@@ -385,9 +537,13 @@ function SlideStage({
             {tagRow}
             {teacherSubmissionsToggle}
             {isTeacher && <GradingPanel submissions={submissions} />}
+            {liveTag}
+            {liveToggle}
           </View>
 
           <View className="flex-row items-center gap-2.5">
+            {blanksButton}
+            {quizButton}
             {studentSubmitButton}
             {slide && (
               <SlideTimer
@@ -436,7 +592,9 @@ function SlideStage({
         className="flex-1 overflow-auto bg-black/[0.03]"
         onLayout={(e) => {
           const { width, height } = e.nativeEvent.layout;
-          setStageSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+          setStageSize((prev) =>
+            prev.width === width && prev.height === height ? prev : { width, height },
+          );
         }}
       >
         {(isLoading || (!slide && total === 0)) && (
@@ -547,7 +705,10 @@ function SlideStage({
                 {resource.title}
               </Text>
               {tag && (
-                <View style={{ backgroundColor: `${tag.color}1f` }} className="rounded-full px-2 py-0.5">
+                <View
+                  style={{ backgroundColor: `${tag.color}1f` }}
+                  className="rounded-full px-2 py-0.5"
+                >
                   <Text style={{ color: tag.color }} className="text-[10px] font-semibold">
                     {tag.label}
                   </Text>
@@ -555,9 +716,13 @@ function SlideStage({
               )}
               {teacherSubmissionsToggle}
               {isTeacher && <GradingPanel submissions={submissions} />}
+              {liveTag}
+              {liveToggle}
             </View>
 
             <View className="absolute inset-x-0 top-3 flex-row items-center justify-center gap-2.5">
+              {blanksButton}
+              {quizButton}
               {studentSubmitButton}
               <SlideTimer
                 key={slide.id}
@@ -572,10 +737,19 @@ function SlideStage({
             {/* Flush against the extreme right edge, spanning the full height so it never
                 collides with the header/timer/nav overlays above and below it — scrolls
                 internally if the tool list is ever taller than the window. */}
-            <View testID="fullscreen-toolbar" className="absolute inset-y-0 right-0 rounded-l-2xl bg-white/95 shadow-lg">
+            <View
+              testID="fullscreen-toolbar"
+              className="absolute inset-y-0 right-0 rounded-l-2xl bg-white/95 shadow-lg"
+            >
               <ScrollView
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 6 }}
+                contentContainerStyle={{
+                  flexGrow: 1,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingVertical: 12,
+                  paddingHorizontal: 6,
+                }}
               >
                 <SlideToolbarButtons
                   orientation="vertical"
@@ -586,7 +760,13 @@ function SlideStage({
             </View>
 
             <View className="absolute inset-x-0 bottom-3 items-center">
-              <SlideNavControls index={index} total={total} onPrev={onPrev} onNext={onNext} />
+              <SlideNavControls
+                index={index}
+                total={total}
+                onPrev={onPrev}
+                onNext={onNext}
+                locked={navLocked}
+              />
             </View>
             {isTeacher && (
               <View className="absolute bottom-3 right-16">
@@ -602,7 +782,13 @@ function SlideStage({
       {!fullscreen && (
         <View className="flex-row items-center border-t border-black/5 bg-white px-5 py-2">
           <View className="flex-1" />
-          <SlideNavControls index={index} total={total} onPrev={onPrev} onNext={onNext} />
+          <SlideNavControls
+            index={index}
+            total={total}
+            onPrev={onPrev}
+            onNext={onNext}
+            locked={navLocked}
+          />
           <View className="flex-1 items-end">
             {isTeacher && <AddSlideMenu resource={resource} onFlash={showFlash} />}
           </View>
@@ -623,6 +809,23 @@ function SlideStage({
         <View className="absolute bottom-20 right-6 rounded-xl bg-ink px-4 py-3 shadow-lg">
           <Text className="text-sm font-medium text-white">{flash}</Text>
         </View>
+      )}
+
+      {overlay === 'quiz' && (
+        <QuizView
+          questions={mcQuestions}
+          answers={myAnswers}
+          onAnswerChange={handleAnswerChange}
+          onClose={() => setOverlay(null)}
+        />
+      )}
+      {overlay === 'blanks' && (
+        <FillBlanksView
+          questions={blankQuestions}
+          answers={myAnswers}
+          onAnswerChange={handleAnswerChange}
+          onClose={() => setOverlay(null)}
+        />
       )}
     </>
   );
@@ -686,30 +889,34 @@ function SlideNavControls({
   total,
   onPrev,
   onNext,
+  locked,
 }: {
   index: number;
   total: number;
   onPrev: () => void;
   onNext: () => void;
+  locked?: boolean;
 }) {
+  const prevDisabled = locked || index === 0;
+  const nextDisabled = locked || index >= total - 1;
   return (
     <View className="flex-row items-center gap-3 rounded-full bg-white px-2 py-1 shadow-sm">
       <Pressable
         onPress={onPrev}
-        disabled={index === 0}
-        style={{ opacity: index === 0 ? 0.3 : 1 }}
+        disabled={prevDisabled}
+        style={{ opacity: prevDisabled ? 0.3 : 1 }}
         className="flex-row items-center gap-1.5 rounded-full px-3 py-1.5 active:bg-black/5"
       >
         <Feather name="chevron-left" size={14} color="#4b5563" />
         <Text className="text-xs font-medium text-ink/70">Prev</Text>
       </Pressable>
       <Text className="text-xs text-ink/50">
-        Slide {total === 0 ? 0 : index + 1} of {total}
+        {locked ? 'Following teacher' : `Slide ${total === 0 ? 0 : index + 1} of ${total}`}
       </Text>
       <Pressable
         onPress={onNext}
-        disabled={index >= total - 1}
-        style={{ opacity: index >= total - 1 ? 0.3 : 1 }}
+        disabled={nextDisabled}
+        style={{ opacity: nextDisabled ? 0.3 : 1 }}
         className="flex-row items-center gap-1.5 rounded-full px-3 py-1.5 active:bg-black/5"
       >
         <Text className="text-xs font-medium text-ink/70">Next</Text>
@@ -721,7 +928,13 @@ function SlideNavControls({
 
 // Teacher-only: appends more slides to the lesson currently open — a blank canvas, or
 // another file (image/PDF) converted the same way the original upload was.
-function AddSlideMenu({ resource, onFlash }: { resource: LessonResource; onFlash: (message: string) => void }) {
+function AddSlideMenu({
+  resource,
+  onFlash,
+}: {
+  resource: LessonResource;
+  onFlash: (message: string) => void;
+}) {
   const { addBlankSlide, addFile } = useAddSlides(resource);
   const [open, setOpen] = useState(false);
   const busy = addBlankSlide.isPending || addFile.isPending;
@@ -742,7 +955,8 @@ function AddSlideMenu({ resource, onFlash }: { resource: LessonResource; onFlash
     addFile.mutate(
       { uri: asset.uri, filename: asset.name, mimeType: asset.mimeType ?? null },
       {
-        onSuccess: (count) => onFlash(`Added ${count} slide${count === 1 ? '' : 's'} from ${asset.name}.`),
+        onSuccess: (count) =>
+          onFlash(`Added ${count} slide${count === 1 ? '' : 's'} from ${asset.name}.`),
         onError: () => onFlash("Couldn't add that file."),
       },
     );
@@ -757,7 +971,11 @@ function AddSlideMenu({ resource, onFlash }: { resource: LessonResource; onFlash
         style={{ opacity: busy ? 0.5 : 1 }}
         className="h-9 w-9 items-center justify-center rounded-full bg-violet-600 shadow-sm active:bg-violet-700"
       >
-        {busy ? <ActivityIndicator size="small" color="#fff" /> : <Feather name="plus" size={18} color="#fff" />}
+        {busy ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <Feather name="plus" size={18} color="#fff" />
+        )}
       </Pressable>
       {open && (
         <View className="absolute bottom-11 right-0 w-52 gap-0.5 rounded-xl bg-white p-1.5 shadow-lg">
@@ -806,20 +1024,17 @@ function GradingPanel({ submissions }: { submissions: ReturnType<typeof useSlide
           <Text className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink/40">
             Grades · {submittedRows.length} submitted
           </Text>
-          <ScrollView style={{ maxHeight: 260 }}>
+          <ScrollView style={{ maxHeight: 320 }}>
             {submittedRows.map((s, i) => (
-              <View
+              <GradingRow
                 key={s.id}
-                className={`gap-1.5 px-1 py-2 ${i < submittedRows.length - 1 ? 'border-b border-black/5' : ''}`}
-              >
-                <Text className="text-xs font-medium text-ink/80" numberOfLines={1}>
-                  {s.profiles?.full_name ?? 'Student'}
-                </Text>
-                <GradeSlider
-                  value={s.grade}
-                  onCommit={(grade) => submissions.setGrade.mutate({ submissionId: s.id, grade })}
-                />
-              </View>
+                submission={s}
+                bordered={i < submittedRows.length - 1}
+                onSetGrade={(grade) => submissions.setGrade.mutate({ submissionId: s.id, grade })}
+                onSetFeedback={(feedback) =>
+                  submissions.setGrade.mutate({ submissionId: s.id, grade: s.grade, feedback })
+                }
+              />
             ))}
           </ScrollView>
         </View>
@@ -828,11 +1043,59 @@ function GradingPanel({ submissions }: { submissions: ReturnType<typeof useSlide
   );
 }
 
+// One student's row inside GradingPanel — the grade slider plus a free-text comment,
+// saved together via setGrade's extended {grade, feedback} input. Feedback commits on
+// blur/submit (same pattern as the lesson-file rename fields elsewhere in this app)
+// rather than on every keystroke, so it doesn't fire a write per character.
+function GradingRow({
+  submission,
+  bordered,
+  onSetGrade,
+  onSetFeedback,
+}: {
+  submission: SlideSubmissionWithStudent;
+  bordered: boolean;
+  onSetGrade: (grade: number | null) => void;
+  onSetFeedback: (feedback: string) => void;
+}) {
+  const [draftFeedback, setDraftFeedback] = useState(submission.feedback ?? '');
+
+  const commitFeedback = () => {
+    if (draftFeedback !== (submission.feedback ?? '')) onSetFeedback(draftFeedback);
+  };
+
+  return (
+    <View className={`gap-1.5 px-1 py-2 ${bordered ? 'border-b border-black/5' : ''}`}>
+      <Text className="text-xs font-medium text-ink/80" numberOfLines={1}>
+        {submission.profiles?.full_name ?? 'Student'}
+      </Text>
+      <GradeSlider value={submission.grade} onCommit={onSetGrade} />
+      <TextInput
+        value={draftFeedback}
+        onChangeText={setDraftFeedback}
+        onBlur={commitFeedback}
+        onSubmitEditing={commitFeedback}
+        placeholder="Add feedback…"
+        multiline
+        className="rounded-lg border border-black/10 px-2 py-1.5 text-xs text-ink"
+      />
+    </View>
+  );
+}
+
 type ToolbarIconName =
   | { set: 'feather'; name: keyof typeof Feather.glyphMap }
   | { set: 'ionicons'; name: keyof typeof Ionicons.glyphMap };
 
-function ToolbarIcon({ icon, size, color }: { icon: ToolbarIconName; size: number; color: string }) {
+function ToolbarIcon({
+  icon,
+  size,
+  color,
+}: {
+  icon: ToolbarIconName;
+  size: number;
+  color: string;
+}) {
   return icon.set === 'feather' ? (
     <Feather name={icon.name} size={size} color={color} />
   ) : (
@@ -936,7 +1199,9 @@ function SlideToolbarButtons({
   const [shapePickerOpen, setShapePickerOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
 
-  const rowClass = vertical ? 'mt-1 items-center gap-1 pt-1.5' : 'ml-1 flex-row items-center gap-1 pl-1.5';
+  const rowClass = vertical
+    ? 'mt-1 items-center gap-1 pt-1.5'
+    : 'ml-1 flex-row items-center gap-1 pl-1.5';
 
   return (
     <View className={vertical ? 'items-center' : 'flex-row items-center'}>
@@ -1075,7 +1340,10 @@ function SlideToolbarButtons({
         </View>
       )}
       <SlideToolbarButton icon={{ set: 'feather', name: 'link' }} onPress={onOpenLinkDialog} />
-      <SlideToolbarButton icon={{ set: 'feather', name: 'image' }} onPress={() => comingSoon('Images')} />
+      <SlideToolbarButton
+        icon={{ set: 'feather', name: 'image' }}
+        onPress={() => comingSoon('Images')}
+      />
       {/* Only the teacher authors questions — students answer them inline on the slide instead. */}
       {canAuthorQuestions && (
         <SlideToolbarButton
@@ -1102,7 +1370,9 @@ function SlideToolbarButtons({
         }}
       />
       {emojiPickerOpen && (
-        <View className={`${vertical ? 'flex-row flex-wrap justify-center' : 'flex-row flex-wrap'} ${rowClass} max-w-[140px]`}>
+        <View
+          className={`${vertical ? 'flex-row flex-wrap justify-center' : 'flex-row flex-wrap'} ${rowClass} max-w-[140px]`}
+        >
           {EMOJI_OPTIONS.map((emoji) => (
             <Pressable
               key={emoji}
@@ -1121,7 +1391,10 @@ function SlideToolbarButtons({
         icon={{ set: 'feather', name: 'paperclip' }}
         onPress={() => comingSoon('File attachments')}
       />
-      <SlideToolbarButton icon={{ set: 'feather', name: 'mic' }} onPress={() => comingSoon('Voice notes')} />
+      <SlideToolbarButton
+        icon={{ set: 'feather', name: 'mic' }}
+        onPress={() => comingSoon('Voice notes')}
+      />
     </View>
   );
 }
@@ -1205,7 +1478,9 @@ function SlideTimer({
           style={{ opacity: seconds === 0 ? 0.4 : 1 }}
           className="rounded-md bg-violet-600 px-2.5 py-1"
         >
-          <Text className="text-[11px] font-semibold text-white">{running ? 'Pause' : 'Start'}</Text>
+          <Text className="text-[11px] font-semibold text-white">
+            {running ? 'Pause' : 'Start'}
+          </Text>
         </Pressable>
         <Pressable
           onPress={() => {

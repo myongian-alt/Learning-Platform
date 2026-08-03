@@ -500,57 +500,6 @@ export type Database = {
           },
         ];
       };
-      slide_submissions: {
-        Row: {
-          annotations: Json;
-          answers: Json;
-          grade: number | null;
-          id: string;
-          objects: Json;
-          slide_id: string;
-          student_id: string;
-          submitted_at: string | null;
-          updated_at: string;
-        };
-        Insert: {
-          annotations?: Json;
-          answers?: Json;
-          grade?: number | null;
-          id?: string;
-          objects?: Json;
-          slide_id: string;
-          student_id: string;
-          submitted_at?: string | null;
-          updated_at?: string;
-        };
-        Update: {
-          annotations?: Json;
-          answers?: Json;
-          grade?: number | null;
-          id?: string;
-          objects?: Json;
-          slide_id?: string;
-          student_id?: string;
-          submitted_at?: string | null;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: 'slide_submissions_slide_id_fkey';
-            columns: ['slide_id'];
-            isOneToOne: false;
-            referencedRelation: 'lesson_slides';
-            referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'slide_submissions_student_id_fkey';
-            columns: ['student_id'];
-            isOneToOne: false;
-            referencedRelation: 'profiles';
-            referencedColumns: ['id'];
-          },
-        ];
-      };
       library_items: {
         Row: {
           content: Json;
@@ -791,6 +740,60 @@ export type Database = {
           },
         ];
       };
+      slide_submissions: {
+        Row: {
+          annotations: Json;
+          answers: Json;
+          feedback: string | null;
+          grade: number | null;
+          id: string;
+          objects: Json;
+          slide_id: string;
+          student_id: string;
+          submitted_at: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          annotations?: Json;
+          answers?: Json;
+          feedback?: string | null;
+          grade?: number | null;
+          id?: string;
+          objects?: Json;
+          slide_id: string;
+          student_id: string;
+          submitted_at?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          annotations?: Json;
+          answers?: Json;
+          feedback?: string | null;
+          grade?: number | null;
+          id?: string;
+          objects?: Json;
+          slide_id?: string;
+          student_id?: string;
+          submitted_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'slide_submissions_slide_id_fkey';
+            columns: ['slide_id'];
+            isOneToOne: false;
+            referencedRelation: 'lesson_slides';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'slide_submissions_student_id_fkey';
+            columns: ['student_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       standards: {
         Row: {
           code: string;
@@ -871,10 +874,7 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      find_class_id_by_join_code: {
-        Args: { code: string };
-        Returns: string;
-      };
+      find_class_id_by_join_code: { Args: { code: string }; Returns: string };
     };
     Enums: {
       assignment_status: 'draft' | 'published' | 'archived';
@@ -882,16 +882,6 @@ export type Database = {
       help_request_status: 'open' | 'acknowledged' | 'resolved';
       lesson_conversion_status: 'none' | 'pending' | 'ready' | 'failed';
       lesson_file_type: 'pdf' | 'pptx' | 'docx' | 'image' | 'video' | 'link';
-      slide_activity_tag:
-        | 'title_objectives'
-        | 'warm_up'
-        | 'main_idea'
-        | 'solved_examples'
-        | 'guided_practice'
-        | 'independent_activity'
-        | 'group_activity'
-        | 'challenge_extra'
-        | 'exit_ticket';
       library_item_type: 'quiz' | 'lesson' | 'activity' | 'video';
       lms_provider: 'google_classroom' | 'canvas' | 'schoology' | 'clever';
       page_source_type: 'blank_canvas' | 'pdf' | 'image' | 'slide' | 'video' | 'question' | 'link';
@@ -911,6 +901,16 @@ export type Database = {
         | 'labeling'
         | 'reorder'
         | 'poll';
+      slide_activity_tag:
+        | 'title_objectives'
+        | 'warm_up'
+        | 'main_idea'
+        | 'solved_examples'
+        | 'guided_practice'
+        | 'independent_activity'
+        | 'group_activity'
+        | 'challenge_extra'
+        | 'exit_ticket';
       stroke_author_role: 'student' | 'teacher';
       submission_status: 'not_started' | 'in_progress' | 'submitted' | 'graded';
       user_role: 'teacher' | 'student' | 'admin';
@@ -922,6 +922,7 @@ export type Database = {
 };
 
 type DatabaseWithoutInternals = Omit<Database, '__InternalSupabase'>;
+
 type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, 'public'>];
 
 export type Tables<
@@ -1013,6 +1014,22 @@ export type Enums<
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums'][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema['Enums']
     ? DefaultSchema['Enums'][DefaultSchemaEnumNameOrOptions]
+    : never;
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    keyof DefaultSchema['CompositeTypes'] | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes']
+    : never) = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes'][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema['CompositeTypes']
+    ? DefaultSchema['CompositeTypes'][PublicCompositeTypeNameOrOptions]
     : never;
 
 // ---------------------------------------------------------------------------

@@ -4,11 +4,16 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { SlideViewerModal } from '@/components/slides/slide-viewer';
+import { WeekFolderCard } from '@/components/lessons/week-folder';
+import { SLIDE_TAGS, SlideViewerModal } from '@/components/slides/slide-viewer';
 import { useClassDetail } from '@/hooks/queries/use-class-detail';
+import { useClassWeekProgress } from '@/hooks/queries/use-class-week-progress';
 import { useLessonResources } from '@/hooks/queries/use-lesson-resources';
+import { useWeekActivities, type WeekActivity } from '@/hooks/queries/use-week-activities';
 import { useAuthStore } from '@/store/auth-store';
 import type { LessonFileType, LessonResource } from '@/types/database';
+
+const TOTAL_WEEKS = 15;
 
 const FILE_TYPE_LABEL: Record<LessonFileType, string> = {
   pdf: 'PDF',
@@ -23,29 +28,32 @@ function isViewable(resource: LessonResource) {
   return resource.file_type === 'image' || resource.conversion_status === 'ready';
 }
 
-// A student's read-only view of a class's Lessons — same underlying `lesson_resources`/
-// `lesson_slides` data as the teacher's screen, just without upload/rename/delete/tagging,
-// with slides opened via the same SlideViewerModal in "student" mode (own annotate+submit
-// layer instead of the teacher's authoring layer).
+// A student's read-only week-folder view of a class's Lessons — mirrors the teacher's
+// grid (src/app/class/[classId].tsx) via the shared WeekFolderCard, but each folder's
+// lock state and progress bar come from this student's own activity, and opening a week
+// splits into "Lesson resources" (viewable files/slides) vs. "Activities to respond to"
+// (submission-enabled slides, with a status pill). Slides open via the same
+// SlideViewerModal in "student" mode (own annotate+submit layer instead of the
+// teacher's authoring layer).
 export function StudentClassView({ classId }: { classId: string }) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const studentId = useAuthStore((s) => s.session?.user.id);
   const classQuery = useClassDetail(classId);
   const { resources, isLoading } = useLessonResources(classId);
+  const weekProgress = useClassWeekProgress(classId, studentId ?? null);
+  const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
   const [viewing, setViewing] = useState<{ resource: LessonResource; startIndex: number } | null>(
     null,
   );
 
-  const weeks = useMemo(() => {
-    const map = new Map<number, LessonResource[]>();
-    for (const r of resources) {
-      const list = map.get(r.week_number) ?? [];
-      list.push(r);
-      map.set(r.week_number, list);
-    }
-    return [...map.entries()].sort((a, b) => a[0] - b[0]);
-  }, [resources]);
+  const weekResources = useMemo(
+    () => (selectedWeek === null ? [] : resources.filter((r) => r.week_number === selectedWeek)),
+    [resources, selectedWeek],
+  );
+  const weekResourceIds = useMemo(() => weekResources.map((r) => r.id), [weekResources]);
+  const activities = useWeekActivities(weekResourceIds, studentId ?? null);
+  const resourceById = useMemo(() => new Map(resources.map((r) => [r.id, r])), [resources]);
 
   if (viewing && studentId) {
     return (
@@ -59,56 +67,142 @@ export function StudentClassView({ classId }: { classId: string }) {
     );
   }
 
+  const openActivity = (activity: WeekActivity) => {
+    const resource = resourceById.get(activity.resourceId);
+    if (!resource) return;
+    setViewing({ resource, startIndex: activity.slideIndex });
+  };
+
   return (
-    <View className="flex-1 bg-paper" style={{ paddingTop: insets.top }}>
-      <View className="flex-row items-center gap-3 border-b border-black/5 bg-white px-5 py-4">
+    <View className="flex-1 bg-lf-canvas" style={{ paddingTop: insets.top }}>
+      <View className="flex-row items-center gap-3 border-b border-lf-line bg-white px-5 py-4">
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => (selectedWeek !== null ? setSelectedWeek(null) : router.back())}
           className="h-8 w-8 items-center justify-center rounded-lg active:bg-black/5"
         >
           <Feather name="chevron-left" size={18} color="#4b5563" />
         </Pressable>
-        <Text className="text-lg font-semibold text-ink">{classQuery.data?.name ?? 'Class'}</Text>
+        <View className="flex-1">
+          <Text className="text-lg font-bold text-lf-ink">
+            {selectedWeek !== null ? `Week ${selectedWeek}` : (classQuery.data?.name ?? 'Class')}
+          </Text>
+          {selectedWeek !== null && (
+            <Text className="text-xs text-lf-muted">{classQuery.data?.name}</Text>
+          )}
+        </View>
       </View>
 
-      <ScrollView contentContainerClassName="gap-5 p-5">
-        {isLoading && <ActivityIndicator />}
-        {!isLoading && weeks.length === 0 && (
-          <Text className="text-sm text-ink/50">No lessons have been posted yet.</Text>
-        )}
-        {weeks.map(([week, items]) => (
-          <View key={week} className="gap-2">
-            <Text className="text-xs font-semibold uppercase tracking-wide text-ink/40">
-              Week {week}
-            </Text>
-            <View className="gap-2">
-              {items.map((resource) => {
-                const viewable = isViewable(resource);
-                return (
-                  <Pressable
-                    key={resource.id}
-                    onPress={() => viewable && setViewing({ resource, startIndex: 0 })}
-                    disabled={!viewable}
-                    style={{ opacity: viewable ? 1 : 0.5 }}
-                    className="flex-row items-center justify-between rounded-xl bg-white p-3.5 shadow-sm"
-                  >
-                    <View className="flex-1 gap-0.5">
-                      <Text className="text-sm font-semibold text-ink" numberOfLines={1}>
-                        {resource.title}
-                      </Text>
-                      <Text className="text-xs text-ink/40">
-                        {FILE_TYPE_LABEL[resource.file_type]}
-                        {resource.conversion_status === 'pending' && ' · Preparing…'}
-                      </Text>
-                    </View>
-                    {viewable && <Feather name="chevron-right" size={16} color="#9ca3af" />}
-                  </Pressable>
-                );
-              })}
-            </View>
+      {selectedWeek === null ? (
+        <ScrollView contentContainerClassName="gap-3 p-5">
+          {isLoading && <ActivityIndicator />}
+          <View className="flex-row flex-wrap gap-3">
+            {Array.from({ length: TOTAL_WEEKS }, (_, i) => i + 1).map((week) => {
+              const progress = weekProgress.data?.get(week);
+              const locked = !progress || progress.resourceCount === 0;
+              return (
+                <WeekFolderCard
+                  key={week}
+                  week={week}
+                  lessonsCount={progress?.resourceCount ?? 0}
+                  selected={false}
+                  locked={locked}
+                  progressPercent={progress?.percentComplete ?? null}
+                  statusLabel={
+                    locked ? 'Locked' : progress?.percentComplete === 100 ? 'Done' : undefined
+                  }
+                  onPress={() => {
+                    if (locked) return;
+                    setSelectedWeek(week);
+                  }}
+                />
+              );
+            })}
           </View>
-        ))}
-      </ScrollView>
+        </ScrollView>
+      ) : (
+        <ScrollView contentContainerClassName="gap-6 p-5">
+          <View className="gap-2">
+            <Text className="text-xs font-bold uppercase tracking-wide text-lf-muted3">
+              Lesson resources
+            </Text>
+            {weekResources.length === 0 && (
+              <Text className="text-sm text-lf-muted">Nothing posted yet.</Text>
+            )}
+            {weekResources.map((resource) => {
+              const viewable = isViewable(resource);
+              return (
+                <Pressable
+                  key={resource.id}
+                  onPress={() => viewable && setViewing({ resource, startIndex: 0 })}
+                  disabled={!viewable}
+                  style={{ opacity: viewable ? 1 : 0.5 }}
+                  className="flex-row items-center justify-between rounded-xl bg-white p-3.5 shadow-sm"
+                >
+                  <View className="flex-1 gap-0.5">
+                    <Text className="text-sm font-semibold text-lf-ink" numberOfLines={1}>
+                      {resource.title}
+                    </Text>
+                    <Text className="text-xs text-lf-muted">
+                      {FILE_TYPE_LABEL[resource.file_type]}
+                      {resource.conversion_status === 'pending' && ' · Preparing…'}
+                    </Text>
+                  </View>
+                  {viewable && <Feather name="chevron-right" size={16} color="#9ca3af" />}
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View className="gap-2">
+            <Text className="text-xs font-bold uppercase tracking-wide text-lf-muted3">
+              Activities to respond to
+            </Text>
+            {activities.isLoading && <ActivityIndicator />}
+            {!activities.isLoading && (activities.data?.length ?? 0) === 0 && (
+              <Text className="text-sm text-lf-muted">No activities posted for this week.</Text>
+            )}
+            {activities.data?.map((activity) => {
+              const resource = resourceById.get(activity.resourceId);
+              const tag = activity.activityTag ? SLIDE_TAGS[activity.activityTag] : null;
+              const statusLabel = activity.submitted
+                ? activity.grade !== null
+                  ? `Graded ${activity.grade}/100`
+                  : 'Submitted'
+                : 'Not started';
+              const statusColor = activity.submitted
+                ? activity.grade !== null
+                  ? '#7C3AED'
+                  : '#10B981'
+                : '#9C98B4';
+              return (
+                <Pressable
+                  key={activity.slideId}
+                  onPress={() => openActivity(activity)}
+                  className="flex-row items-center gap-3 rounded-xl bg-white p-3.5 shadow-sm"
+                >
+                  {tag && (
+                    <View className="h-2 w-2 rounded-full" style={{ backgroundColor: tag.color }} />
+                  )}
+                  <View className="flex-1 gap-0.5">
+                    <Text className="text-sm font-semibold text-lf-ink" numberOfLines={1}>
+                      {resource?.title ?? 'Activity'}
+                    </Text>
+                    <Text className="text-xs text-lf-muted">{tag?.label ?? 'Activity'}</Text>
+                  </View>
+                  <View
+                    className="rounded-full px-2.5 py-1"
+                    style={{ backgroundColor: `${statusColor}1A` }}
+                  >
+                    <Text className="text-[11px] font-bold" style={{ color: statusColor }}>
+                      {statusLabel}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+      )}
     </View>
   );
 }

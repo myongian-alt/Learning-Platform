@@ -3,11 +3,20 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StudentClassView } from '@/components/class/student-class-view';
 import { TEACHER_SIDEBAR_ITEMS, TeacherSidebar } from '@/components/layout/teacher-sidebar';
+import { WeekFolderCard, weekColor } from '@/components/lessons/week-folder';
 import { SLIDE_TAGS, SlideViewerModal } from '@/components/slides/slide-viewer';
 import { useClassAssignments } from '@/hooks/queries/use-class-assignments';
 import { useClassDetail } from '@/hooks/queries/use-class-detail';
@@ -22,9 +31,10 @@ import type { LessonFileType, LessonResource } from '@/types/database';
 const TOTAL_WEEKS = 15;
 const STORAGE_QUOTA_BYTES = 10 * 1024 * 1024 * 1024;
 
-const WEEK_COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ec4899'];
-
-const FILE_TYPE_META: Record<LessonFileType, { icon: keyof typeof Feather.glyphMap; color: string; label: string }> = {
+const FILE_TYPE_META: Record<
+  LessonFileType,
+  { icon: keyof typeof Feather.glyphMap; color: string; label: string }
+> = {
   pdf: { icon: 'file-text', color: '#ef4444', label: 'PDF' },
   pptx: { icon: 'monitor', color: '#f97316', label: 'PPTX' },
   docx: { icon: 'file-text', color: '#3b82f6', label: 'DOCX' },
@@ -56,8 +66,15 @@ export default function ClassLessonsScreen() {
   const classQuery = useClassDetail(classId);
   const { assignments } = useClassAssignments(classId);
   const { students } = useClassRoster(classId);
-  const { resources, countByWeek, totalBytes, uploadFile, renameFile, deleteFile, retryConversion } =
-    useLessonResources(classId);
+  const {
+    resources,
+    countByWeek,
+    totalBytes,
+    uploadFile,
+    renameFile,
+    deleteFile,
+    retryConversion,
+  } = useLessonResources(classId);
   const createAssignment = useCreateAssignment();
 
   const [section, setSection] = useState<Section>('lessons');
@@ -100,9 +117,7 @@ export default function ClassLessonsScreen() {
     return Array.from({ length: TOTAL_WEEKS }, (_, i) => i + 1).filter((week) => {
       if (!query) return true;
       if (`week ${week}`.includes(query)) return true;
-      return resources.some(
-        (r) => r.week_number === week && r.title.toLowerCase().includes(query),
-      );
+      return resources.some((r) => r.week_number === week && r.title.toLowerCase().includes(query));
     });
   }, [search, resources]);
 
@@ -169,7 +184,11 @@ export default function ClassLessonsScreen() {
   }
 
   const classRow = classQuery.data;
-  const breadcrumb = [classRow.grade, classRow.section?.length ? `Section ${classRow.section.join(', ')}` : null, classRow.subject]
+  const breadcrumb = [
+    classRow.grade,
+    classRow.section?.length ? `Section ${classRow.section.join(', ')}` : null,
+    classRow.subject,
+  ]
     .filter(Boolean)
     .join('  •  ');
 
@@ -239,7 +258,9 @@ export default function ClassLessonsScreen() {
                 fileActions={fileActions}
               />
             )}
-            {section === 'students' && <StudentsSection students={students} joinCode={classRow.join_code} />}
+            {section === 'students' && (
+              <StudentsSection students={students} joinCode={classRow.join_code} />
+            )}
             {section === 'quizzes' && (
               <ComingSoonSection
                 icon="game-controller-outline"
@@ -280,7 +301,10 @@ export default function ClassLessonsScreen() {
           <View className="flex-row items-center gap-2.5">
             <Text className="text-xs text-ink/50">Storage Used</Text>
             <View className="h-1.5 w-24 overflow-hidden rounded-full bg-black/10">
-              <View style={{ width: `${storagePct}%` }} className="h-full rounded-full bg-emerald-500" />
+              <View
+                style={{ width: `${storagePct}%` }}
+                className="h-full rounded-full bg-emerald-500"
+              />
             </View>
             <Text className="text-xs font-medium text-ink/70">{usedGB} GB / 10 GB</Text>
           </View>
@@ -426,40 +450,6 @@ function LessonsSection({
   );
 }
 
-function WeekFolderCard({
-  week,
-  lessonsCount,
-  selected,
-  onPress,
-}: {
-  week: number;
-  lessonsCount: number;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  const color = WEEK_COLORS[(week - 1) % WEEK_COLORS.length];
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        width: 168,
-        backgroundColor: selected ? `${color}12` : '#fff',
-        borderColor: selected ? color : 'rgba(0,0,0,0.06)',
-      }}
-      className="gap-3 rounded-2xl border p-4"
-    >
-      <View className="flex-row items-start justify-between">
-        <Ionicons name={selected ? 'folder-open' : 'folder'} size={30} color={color} />
-        <Feather name="more-vertical" size={16} color="#9ca3af" />
-      </View>
-      <View>
-        <Text className="text-base font-bold text-ink">Week {week}</Text>
-        <Text className="text-xs text-ink/45">{lessonsCount} Lessons</Text>
-      </View>
-    </Pressable>
-  );
-}
-
 function OpenWeekView({
   week,
   lessons,
@@ -524,7 +514,7 @@ function OpenFolderBadge({
   lessonsCount: number;
   onPress: () => void;
 }) {
-  const color = WEEK_COLORS[(week - 1) % WEEK_COLORS.length];
+  const color = weekColor(week);
   return (
     <Pressable
       onPress={onPress}
@@ -586,9 +576,13 @@ function OtherWeeksStrip({
       <Text className="text-[10px] font-semibold uppercase tracking-wide text-ink/35">
         Other weeks
       </Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2.5">
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerClassName="gap-2.5"
+      >
         {weeks.map((week) => {
-          const color = WEEK_COLORS[(week - 1) % WEEK_COLORS.length];
+          const color = weekColor(week);
           const count = countByWeek.get(week) ?? 0;
           return (
             <Pressable
@@ -713,9 +707,7 @@ function SlideThumbnailGroup({
                   <ActivityIndicator size="small" />
                 )}
               </View>
-              <Text className="text-center text-[10px] font-medium text-ink/50">
-                Slide {i + 1}
-              </Text>
+              <Text className="text-center text-[10px] font-medium text-ink/50">Slide {i + 1}</Text>
               {tag && (
                 <Text
                   style={{ color: tag.color }}
@@ -804,9 +796,7 @@ function FileCard({ resource, actions }: { resource: LessonResource; actions: Fi
       </Pressable>
 
       <View className="flex-row items-center justify-between">
-        <View
-          className={`rounded-md px-2 py-0.5 ${failed ? 'bg-red-50' : 'bg-black/5'}`}
-        >
+        <View className={`rounded-md px-2 py-0.5 ${failed ? 'bg-red-50' : 'bg-black/5'}`}>
           <Text
             className={`text-[10px] font-semibold uppercase ${failed ? 'text-red-600' : 'text-ink/50'}`}
           >
@@ -836,10 +826,7 @@ function FileCard({ resource, actions }: { resource: LessonResource; actions: Fi
         </View>
       ) : (
         <View className="flex-row items-center justify-end gap-4 border-t border-black/5 pt-2">
-          <Pressable
-            onPress={() => setRenaming(true)}
-            className="flex-row items-center gap-1"
-          >
+          <Pressable onPress={() => setRenaming(true)} className="flex-row items-center gap-1">
             <Feather name="edit-2" size={12} color="#6b7280" />
             <Text className="text-xs text-ink/50">Rename</Text>
           </Pressable>
@@ -870,8 +857,12 @@ function ActivityCard({
   onPress: () => void;
 }) {
   const bg = { violet: 'bg-violet-50', emerald: 'bg-emerald-50', amber: 'bg-amber-50' }[color];
-  const iconBg = { violet: 'bg-violet-600', emerald: 'bg-emerald-600', amber: 'bg-amber-500' }[color];
-  const text = { violet: 'text-violet-700', emerald: 'text-emerald-700', amber: 'text-amber-700' }[color];
+  const iconBg = { violet: 'bg-violet-600', emerald: 'bg-emerald-600', amber: 'bg-amber-500' }[
+    color
+  ];
+  const text = { violet: 'text-violet-700', emerald: 'text-emerald-700', amber: 'text-amber-700' }[
+    color
+  ];
 
   return (
     <Pressable onPress={onPress} className={`gap-1.5 rounded-xl p-3 ${bg}`}>
@@ -902,64 +893,70 @@ function RightPanel({
   return (
     <View className="w-60 border-l border-black/5 bg-white">
       <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4">
-      <View>
-        <Text className="text-sm font-bold text-ink">Add Activities</Text>
-        <Text className="text-[11px] text-ink/50">
-          {selectedWeek
-            ? `Tap to add to Week ${selectedWeek}`
-            : 'Drag and drop to connect with a week or lesson'}
-        </Text>
-      </View>
-
-      <ActivityCard
-        color="violet"
-        icon={<Ionicons name="game-controller" size={14} color="#fff" />}
-        title="Quizzis & Games"
-        description="Add interactive quizzes, polls, and games"
-        onPress={() => onActivityTap('quiz')}
-      />
-      <ActivityCard
-        color="emerald"
-        icon={<Feather name="file-text" size={14} color="#fff" />}
-        title="Assignment / Homework"
-        description="Create assignments and homework tasks"
-        onPress={() => onActivityTap('assignment')}
-      />
-      <ActivityCard
-        color="amber"
-        icon={<Feather name="folder" size={14} color="#fff" />}
-        title="Projects"
-        description="Add projects and long-term tasks"
-        onPress={() => onActivityTap('project')}
-      />
-
-      <View className="gap-2">
-        <Text className="text-xs font-bold text-ink">How it works</Text>
-        {steps.map((step, i) => (
-          <View key={step} className="flex-row items-start gap-2">
-            <View className="h-4 w-4 items-center justify-center rounded-full bg-violet-500">
-              <Text className="text-[9px] font-bold text-white">{i + 1}</Text>
-            </View>
-            <Text className="flex-1 text-[11px] leading-4 text-ink/60">{step}</Text>
-          </View>
-        ))}
-      </View>
-
-      <View className="gap-1 rounded-xl bg-amber-50 p-3">
-        <View className="flex-row items-center gap-1.5">
-          <Ionicons name="bulb-outline" size={13} color="#b45309" />
-          <Text className="text-xs font-bold text-amber-800">Quick Tip</Text>
+        <View>
+          <Text className="text-sm font-bold text-ink">Add Activities</Text>
+          <Text className="text-[11px] text-ink/50">
+            {selectedWeek
+              ? `Tap to add to Week ${selectedWeek}`
+              : 'Drag and drop to connect with a week or lesson'}
+          </Text>
         </View>
-        <Text className="text-[11px] leading-4 text-amber-900/70">
-          You can also drag activities directly onto a lesson after opening the week folder.
-        </Text>
-      </View>
+
+        <ActivityCard
+          color="violet"
+          icon={<Ionicons name="game-controller" size={14} color="#fff" />}
+          title="Quizzis & Games"
+          description="Add interactive quizzes, polls, and games"
+          onPress={() => onActivityTap('quiz')}
+        />
+        <ActivityCard
+          color="emerald"
+          icon={<Feather name="file-text" size={14} color="#fff" />}
+          title="Assignment / Homework"
+          description="Create assignments and homework tasks"
+          onPress={() => onActivityTap('assignment')}
+        />
+        <ActivityCard
+          color="amber"
+          icon={<Feather name="folder" size={14} color="#fff" />}
+          title="Projects"
+          description="Add projects and long-term tasks"
+          onPress={() => onActivityTap('project')}
+        />
+
+        <View className="gap-2">
+          <Text className="text-xs font-bold text-ink">How it works</Text>
+          {steps.map((step, i) => (
+            <View key={step} className="flex-row items-start gap-2">
+              <View className="h-4 w-4 items-center justify-center rounded-full bg-violet-500">
+                <Text className="text-[9px] font-bold text-white">{i + 1}</Text>
+              </View>
+              <Text className="flex-1 text-[11px] leading-4 text-ink/60">{step}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View className="gap-1 rounded-xl bg-amber-50 p-3">
+          <View className="flex-row items-center gap-1.5">
+            <Ionicons name="bulb-outline" size={13} color="#b45309" />
+            <Text className="text-xs font-bold text-amber-800">Quick Tip</Text>
+          </View>
+          <Text className="text-[11px] leading-4 text-amber-900/70">
+            You can also drag activities directly onto a lesson after opening the week folder.
+          </Text>
+        </View>
       </ScrollView>
     </View>
   );
 }
 
-function StudentsSection({ students, joinCode }: { students: { id: string; full_name: string }[]; joinCode: string }) {
+function StudentsSection({
+  students,
+  joinCode,
+}: {
+  students: { id: string; full_name: string }[];
+  joinCode: string;
+}) {
   return (
     <>
       <View>
