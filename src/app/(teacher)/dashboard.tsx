@@ -6,6 +6,7 @@ import { useTeacherAssignments } from '@/hooks/queries/use-teacher-assignments';
 import { useTeacherClasses } from '@/hooks/queries/use-teacher-classes';
 import { signOut } from '@/lib/auth-actions';
 import { useAuthStore } from '@/store/auth-store';
+import { StatCard } from '@/components/ui/stat-card';
 
 export default function TeacherDashboardScreen() {
   const profile = useAuthStore((s) => s.profile);
@@ -68,16 +69,5 @@ export default function TeacherDashboardScreen() {
         </View>
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-function StatCard({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <View
-      className={`flex-1 gap-1 rounded-2xl p-4 shadow-sm ${accent ? 'bg-amber-100' : 'bg-white'}`}
-    >
-      <Text className="text-2xl font-bold text-ink">{value}</Text>
-      <Text className="text-xs text-ink/50">{label}</Text>
-    </View>
   );
 }
