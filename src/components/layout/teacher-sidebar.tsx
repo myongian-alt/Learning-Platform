@@ -14,7 +14,12 @@ export interface SidebarItem {
 export const TEACHER_SIDEBAR_ITEMS: SidebarItem[] = [
   { key: 'classes', label: 'Classes', icon: 'grid' },
   { key: 'lessons', label: 'Lessons', icon: 'book-open' },
-  { key: 'quizzes', label: 'Quizzis & Games', icon: 'award', ioniconOverride: 'game-controller-outline' },
+  {
+    key: 'quizzes',
+    label: 'Quizzis & Games',
+    icon: 'award',
+    ioniconOverride: 'game-controller-outline',
+  },
   { key: 'assignments', label: 'Assignments', icon: 'clipboard' },
   { key: 'reports', label: 'Reports', icon: 'bar-chart-2' },
   { key: 'gradebook', label: 'Gradebook', icon: 'book' },
@@ -30,6 +35,9 @@ interface TeacherSidebarProps {
   teacherName: string;
   avatarUrl?: string | null;
   onProfilePress?: () => void;
+  /** Caption under the name in the footer profile row. Defaults to "Teacher" so
+   * existing call sites are unaffected; the student sidebar passes "Student". */
+  roleLabel?: string;
 }
 
 export function TeacherSidebar({
@@ -39,6 +47,7 @@ export function TeacherSidebar({
   teacherName,
   avatarUrl,
   onProfilePress,
+  roleLabel = 'Teacher',
 }: TeacherSidebarProps) {
   const initial = teacherName.trim().charAt(0).toUpperCase() || '?';
 
@@ -108,7 +117,7 @@ export function TeacherSidebar({
           <Text className="text-[13px] font-semibold text-white" numberOfLines={1}>
             {teacherName}
           </Text>
-          <Text className="text-[11px] text-white/50">Teacher</Text>
+          <Text className="text-[11px] text-white/50">{roleLabel}</Text>
         </View>
         <Feather name="chevron-down" size={13} color="rgba(255,255,255,0.4)" />
       </Pressable>
