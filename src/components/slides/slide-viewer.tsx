@@ -111,11 +111,19 @@ export function SlideViewerModal({
   const live = useLiveClassSessions(!isTeacher ? [resource.class_id] : []);
   const isLiveHere = !isTeacher && live?.resourceId === resource.id;
   const [following, setFollowing] = useState(false);
-  const navLocked = following && isLiveHere;
 
-  // While following, the displayed slide tracks the teacher's broadcast index directly
-  // instead of mirroring it into `index` via an effect — `index` (and Prev/Next) resume
-  // from wherever local navigation last was once following turns off.
+  // A teacher-paced slide force-locks navigation while it's the one actually being presented
+  // live, with no student opt-out — checked against the TEACHER's current slide (whatever
+  // `live.slideIndex` is), not the student's own local `index`, since forcing is about
+  // whatever the class is being shown right now, not wherever this student happens to be.
+  const liveSlideIndex = live && total > 0 ? Math.min(live.slideIndex, total - 1) : null;
+  const liveSlidePacing = liveSlideIndex !== null ? slides?.[liveSlideIndex]?.pacing_mode : null;
+  const forcedLock = isLiveHere && liveSlidePacing === 'teacher_paced';
+  const navLocked = forcedLock || (following && isLiveHere);
+
+  // While following (or force-locked), the displayed slide tracks the teacher's broadcast
+  // index directly instead of mirroring it into `index` via an effect — `index` (and
+  // Prev/Next) resume from wherever local navigation last was once the lock lifts.
   const effectiveIndex =
     navLocked && live && total > 0 ? Math.min(live.slideIndex, total - 1) : index;
   const slide = slides?.[effectiveIndex];
@@ -156,6 +164,7 @@ export function SlideViewerModal({
         following={following}
         onToggleFollowing={() => setFollowing((f) => !f)}
         navLocked={navLocked}
+        forcedLock={forcedLock}
       />
     </View>
   );
@@ -179,6 +188,7 @@ function SlideStage({
   following,
   onToggleFollowing,
   navLocked,
+  forcedLock,
 }: {
   resource: LessonResource;
   slide: ViewableSlide | null;
@@ -197,6 +207,7 @@ function SlideStage({
   following: boolean;
   onToggleFollowing: () => void;
   navLocked: boolean;
+  forcedLock: boolean;
 }) {
   const isTeacher = viewerRole === 'teacher';
   const tag = slide?.activity_tag ? SLIDE_TAGS[slide.activity_tag] : null;
@@ -445,6 +456,15 @@ function SlideStage({
     </Pressable>
   );
 
+  // Read-only, for context while presenting/viewing — the only place pacing is *set* is the
+  // teacher's bulk-select on the slide-thumbnail grid (`SlideThumbnailGroup`), not here.
+  const pacingBadge = slide?.pacing_mode === 'teacher_paced' && (
+    <View className="flex-row items-center gap-1 rounded-full bg-violet-50 px-2 py-1">
+      <Feather name="lock" size={10} color="#7c3aed" />
+      <Text className="text-[10px] font-semibold text-violet-700">Teacher-paced</Text>
+    </View>
+  );
+
   const studentSubmitButton = !isTeacher && slide?.submissions_enabled && (
     <Pressable
       onPress={() => mySubmission.setSubmitted.mutate(!isSubmitted)}
@@ -485,29 +505,38 @@ function SlideStage({
     </Pressable>
   );
 
-  const liveToggle = isLiveHere && (
-    <View className="flex-row items-center gap-1 rounded-full bg-black/[0.03] p-1">
-      <Pressable
-        onPress={() => following && onToggleFollowing()}
-        className={`rounded-full px-2.5 py-1 ${!following ? 'bg-white shadow-sm' : ''}`}
-      >
-        <Text className={`text-[11px] font-bold ${!following ? 'text-ink' : 'text-ink/40'}`}>
-          Self-paced
-        </Text>
-      </Pressable>
-      <Pressable
-        onPress={() => !following && onToggleFollowing()}
-        className="rounded-full px-2.5 py-1"
-        style={{ backgroundColor: following ? '#7C3AED' : 'transparent' }}
-      >
-        <Text
-          className="text-[11px] font-bold"
-          style={{ color: following ? '#fff' : 'rgba(0,0,0,0.4)' }}
-        >
-          Follow teacher
-        </Text>
-      </Pressable>
+  // A teacher-paced slide leaves no opt-out while it's the one being presented live — the
+  // interactive Self-paced/Follow-teacher switch is replaced with a plain locked badge.
+  const liveToggle = isLiveHere && forcedLock ? (
+    <View className="flex-row items-center gap-1.5 rounded-full bg-violet-100 px-2.5 py-1.5">
+      <Feather name="lock" size={11} color="#7C3AED" />
+      <Text className="text-[11px] font-bold text-violet-700">Locked to teacher</Text>
     </View>
+  ) : (
+    isLiveHere && (
+      <View className="flex-row items-center gap-1 rounded-full bg-black/[0.03] p-1">
+        <Pressable
+          onPress={() => following && onToggleFollowing()}
+          className={`rounded-full px-2.5 py-1 ${!following ? 'bg-white shadow-sm' : ''}`}
+        >
+          <Text className={`text-[11px] font-bold ${!following ? 'text-ink' : 'text-ink/40'}`}>
+            Self-paced
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => !following && onToggleFollowing()}
+          className="rounded-full px-2.5 py-1"
+          style={{ backgroundColor: following ? '#7C3AED' : 'transparent' }}
+        >
+          <Text
+            className="text-[11px] font-bold"
+            style={{ color: following ? '#fff' : 'rgba(0,0,0,0.4)' }}
+          >
+            Follow teacher
+          </Text>
+        </Pressable>
+      </View>
+    )
   );
 
   const liveTag = isLiveHere && (
@@ -535,6 +564,7 @@ function SlideStage({
               {resource.title}
             </Text>
             {tagRow}
+            {pacingBadge}
             {teacherSubmissionsToggle}
             {isTeacher && <GradingPanel submissions={submissions} />}
             {liveTag}
@@ -714,6 +744,7 @@ function SlideStage({
                   </Text>
                 </View>
               )}
+              {pacingBadge}
               {teacherSubmissionsToggle}
               {isTeacher && <GradingPanel submissions={submissions} />}
               {liveTag}

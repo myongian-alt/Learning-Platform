@@ -609,10 +609,32 @@ function SlideThumbnailGroup({
   resource: LessonResource;
   actions: FileActions;
 }) {
-  const { data: slides, isLoading } = useLessonSlides(resource.id);
+  const { data: slides, isLoading, updateSlidesPacing } = useLessonSlides(resource.id);
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState(resource.title);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  // Bulk "select some/all slides, then set their pacing" mode — selectedIds only has meaning
+  // while selectionMode is on; both reset together whenever selection is cancelled or applied.
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+  const applyPacing = (pacingMode: 'teacher_paced' | 'student_paced') => {
+    updateSlidesPacing.mutate({ ids: Array.from(selectedIds), pacingMode });
+    exitSelectionMode();
+  };
 
   const converting = resource.conversion_status === 'pending';
   const failed = resource.conversion_status === 'failed';
@@ -633,7 +655,7 @@ function SlideThumbnailGroup({
       <View className="flex-row items-center justify-between">
         <Pressable
           onPress={() => setRenaming(true)}
-          disabled={renaming}
+          disabled={renaming || selectionMode}
           className="flex-1 flex-row items-center gap-2"
         >
           <Feather name="file-text" size={14} color="#ef4444" />
@@ -662,13 +684,34 @@ function SlideThumbnailGroup({
               <Text className="text-xs font-semibold text-red-600">Confirm delete</Text>
             </Pressable>
           </View>
+        ) : selectionMode ? (
+          <View className="flex-row items-center gap-3">
+            <Pressable onPress={() => setSelectedIds(new Set(slides?.map((s) => s.id) ?? []))}>
+              <Text className="text-xs font-semibold text-violet-600">Select all</Text>
+            </Pressable>
+            <Pressable onPress={exitSelectionMode}>
+              <Text className="text-xs text-ink/50">Cancel</Text>
+            </Pressable>
+          </View>
         ) : (
           <View className="flex-row items-center gap-3">
-            <Pressable onPress={() => setRenaming(true)} className="flex-row items-center gap-1">
+            <Pressable
+              onPress={() => setSelectionMode(true)}
+              accessibilityLabel="Select slides"
+              className="flex-row items-center gap-1"
+            >
+              <Feather name="check-square" size={12} color="#6b7280" />
+            </Pressable>
+            <Pressable
+              onPress={() => setRenaming(true)}
+              accessibilityLabel="Rename lesson"
+              className="flex-row items-center gap-1"
+            >
               <Feather name="edit-2" size={12} color="#6b7280" />
             </Pressable>
             <Pressable
               onPress={() => setConfirmingDelete(true)}
+              accessibilityLabel="Delete lesson"
               className="flex-row items-center gap-1"
             >
               <Feather name="trash-2" size={12} color="#ef4444" />
@@ -677,15 +720,47 @@ function SlideThumbnailGroup({
         )}
       </View>
 
+      {selectionMode && selectedIds.size > 0 && (
+        <View className="flex-row flex-wrap items-center gap-2 rounded-xl bg-violet-50 px-3 py-2">
+          <Text className="text-xs font-semibold text-violet-700">
+            {selectedIds.size} slide{selectedIds.size === 1 ? '' : 's'} selected
+          </Text>
+          <View className="flex-1" />
+          <Pressable
+            onPress={() => applyPacing('teacher_paced')}
+            className="flex-row items-center gap-1.5 rounded-full bg-violet-600 px-3 py-1.5"
+          >
+            <Feather name="lock" size={11} color="#fff" />
+            <Text className="text-xs font-semibold text-white">Teacher-paced</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => applyPacing('student_paced')}
+            className="flex-row items-center gap-1.5 rounded-full border border-violet-300 bg-white px-3 py-1.5"
+          >
+            <Feather name="unlock" size={11} color="#7c3aed" />
+            <Text className="text-xs font-semibold text-violet-700">Student-paced</Text>
+          </Pressable>
+        </View>
+      )}
+
       {isLoading && <ActivityIndicator size="small" />}
 
       <View className="flex-row flex-wrap gap-3">
         {slides?.map((slide, i) => {
           const tag = slide.activity_tag ? SLIDE_TAGS[slide.activity_tag] : null;
+          const isTeacherPaced = slide.pacing_mode === 'teacher_paced';
+          const isSelected = selectedIds.has(slide.id);
           return (
             <Pressable
               key={slide.id}
-              onPress={() => actions.onOpen(resource, i)}
+              onPress={() =>
+                selectionMode ? toggleSelected(slide.id) : actions.onOpen(resource, i)
+              }
+              accessibilityLabel={
+                selectionMode
+                  ? `${isSelected ? 'Deselect' : 'Select'} slide ${i + 1}`
+                  : `Open slide ${i + 1}`
+              }
               style={{ width: 124 }}
               className="gap-1"
             >
@@ -693,7 +768,12 @@ function SlideThumbnailGroup({
                 style={{
                   height: 90,
                   backgroundColor: tag ? `${tag.color}1f` : 'rgba(0,0,0,0.04)',
-                  borderColor: tag ? `${tag.color}55` : 'rgba(0,0,0,0.1)',
+                  borderColor: isSelected
+                    ? '#7c3aed'
+                    : tag
+                      ? `${tag.color}55`
+                      : 'rgba(0,0,0,0.1)',
+                  borderWidth: isSelected ? 2 : 1,
                 }}
                 className="items-center justify-center overflow-hidden rounded-lg border"
               >
@@ -705,6 +785,26 @@ function SlideThumbnailGroup({
                   />
                 ) : (
                   <ActivityIndicator size="small" />
+                )}
+
+                {isTeacherPaced && (
+                  <View
+                    className="absolute left-1 top-1 h-4 w-4 items-center justify-center rounded-full bg-black/60"
+                    accessibilityLabel="Teacher-paced"
+                  >
+                    <Feather name="lock" size={9} color="#fff" />
+                  </View>
+                )}
+
+                {selectionMode && (
+                  <View
+                    className={`absolute right-1 top-1 h-5 w-5 items-center justify-center rounded-full ${
+                      isSelected ? 'bg-violet-600' : 'bg-white/80'
+                    }`}
+                    style={!isSelected ? { borderWidth: 1.5, borderColor: '#c4b5fd' } : undefined}
+                  >
+                    {isSelected && <Text className="text-xs font-bold text-white">✓</Text>}
+                  </View>
                 )}
               </View>
               <Text className="text-center text-[10px] font-medium text-ink/50">Slide {i + 1}</Text>

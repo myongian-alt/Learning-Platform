@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { supabase } from '@/lib/supabase';
-import type { LessonSlide, SlideActivityTag } from '@/types/database';
+import type { LessonSlide, SlideActivityTag, SlidePacingMode } from '@/types/database';
 
 export interface ViewableSlide extends LessonSlide {
   url: string | null;
@@ -114,6 +114,22 @@ export function useLessonSlides(resourceId: string | null) {
     },
   });
 
+  // Applies to a whole selection at once (the thumbnail grid's "select some/all slides"
+  // bulk action) rather than one slide at a time like updateSlide — a single `.update().in()`
+  // call, evaluated per-row against the same RLS policy as any other teacher slide edit.
+  const updateSlidesPacing = useMutation({
+    mutationFn: async (input: { ids: string[]; pacingMode: SlidePacingMode }) => {
+      const { error } = await supabase
+        .from('lesson_slides')
+        .update({ pacing_mode: input.pacingMode })
+        .in('id', input.ids);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lesson-slides', resourceId] });
+    },
+  });
+
   // Separate from updateSlide deliberately: strokes save frequently while the teacher is
   // actively drawing, and invalidating/refetching the whole slide list on every stroke would
   // fight the canvas's own local state. The canvas is the source of truth during a drawing
@@ -140,5 +156,5 @@ export function useLessonSlides(resourceId: string | null) {
     },
   });
 
-  return { ...query, updateSlide, saveAnnotations, saveObjects };
+  return { ...query, updateSlide, updateSlidesPacing, saveAnnotations, saveObjects };
 }

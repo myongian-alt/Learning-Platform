@@ -461,6 +461,7 @@ export type Database = {
           duration_minutes: number | null;
           id: string;
           objects: Json;
+          pacing_mode: Database['public']['Enums']['slide_pacing_mode'];
           position: number;
           resource_id: string;
           storage_path: string | null;
@@ -473,6 +474,7 @@ export type Database = {
           duration_minutes?: number | null;
           id?: string;
           objects?: Json;
+          pacing_mode?: Database['public']['Enums']['slide_pacing_mode'];
           position: number;
           resource_id: string;
           storage_path?: string | null;
@@ -485,6 +487,7 @@ export type Database = {
           duration_minutes?: number | null;
           id?: string;
           objects?: Json;
+          pacing_mode?: Database['public']['Enums']['slide_pacing_mode'];
           position?: number;
           resource_id?: string;
           storage_path?: string | null;
@@ -911,6 +914,7 @@ export type Database = {
         | 'group_activity'
         | 'challenge_extra'
         | 'exit_ticket';
+      slide_pacing_mode: 'teacher_paced' | 'student_paced';
       stroke_author_role: 'student' | 'teacher';
       submission_status: 'not_started' | 'in_progress' | 'submitted' | 'graded';
       user_role: 'teacher' | 'student' | 'admin';
@@ -1049,6 +1053,7 @@ export type LmsProvider = Enums<'lms_provider'>;
 export type LessonFileType = Enums<'lesson_file_type'>;
 export type LessonConversionStatus = Enums<'lesson_conversion_status'>;
 export type SlideActivityTag = Enums<'slide_activity_tag'>;
+export type SlidePacingMode = Enums<'slide_pacing_mode'>;
 
 export type StrokePoint = {
   x: number;
