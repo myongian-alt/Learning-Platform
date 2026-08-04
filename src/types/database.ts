@@ -403,6 +403,131 @@ export type Database = {
           },
         ];
       };
+      lesson_attached_tasks: {
+        Row: {
+          created_at: string;
+          created_by: string;
+          id: string;
+          kind: Database['public']['Enums']['lesson_task_kind'];
+          position: number;
+          resource_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by?: string;
+          id?: string;
+          kind: Database['public']['Enums']['lesson_task_kind'];
+          position: number;
+          resource_id: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string;
+          id?: string;
+          kind?: Database['public']['Enums']['lesson_task_kind'];
+          position?: number;
+          resource_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'lesson_attached_tasks_created_by_fkey';
+            columns: ['created_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'lesson_attached_tasks_resource_id_fkey';
+            columns: ['resource_id'];
+            isOneToOne: false;
+            referencedRelation: 'lesson_resources';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      lesson_live_presence: {
+        Row: {
+          class_id: string;
+          following_teacher: boolean;
+          id: string;
+          is_present: boolean;
+          joined_at: string;
+          last_event_type: string | null;
+          last_seen_at: string;
+          left_at: string | null;
+          pacing_mode: Database['public']['Enums']['slide_pacing_mode'] | null;
+          resource_id: string | null;
+          slide_id: string | null;
+          slide_index: number | null;
+          student_id: string;
+          submissions_enabled: boolean;
+          updated_at: string;
+        };
+        Insert: {
+          class_id: string;
+          following_teacher?: boolean;
+          id?: string;
+          is_present?: boolean;
+          joined_at?: string;
+          last_event_type?: string | null;
+          last_seen_at?: string;
+          left_at?: string | null;
+          pacing_mode?: Database['public']['Enums']['slide_pacing_mode'] | null;
+          resource_id?: string | null;
+          slide_id?: string | null;
+          slide_index?: number | null;
+          student_id: string;
+          submissions_enabled?: boolean;
+          updated_at?: string;
+        };
+        Update: {
+          class_id?: string;
+          following_teacher?: boolean;
+          id?: string;
+          is_present?: boolean;
+          joined_at?: string;
+          last_event_type?: string | null;
+          last_seen_at?: string;
+          left_at?: string | null;
+          pacing_mode?: Database['public']['Enums']['slide_pacing_mode'] | null;
+          resource_id?: string | null;
+          slide_id?: string | null;
+          slide_index?: number | null;
+          student_id?: string;
+          submissions_enabled?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'lesson_live_presence_class_id_fkey';
+            columns: ['class_id'];
+            isOneToOne: false;
+            referencedRelation: 'classes';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'lesson_live_presence_resource_id_fkey';
+            columns: ['resource_id'];
+            isOneToOne: false;
+            referencedRelation: 'lesson_resources';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'lesson_live_presence_slide_id_fkey';
+            columns: ['slide_id'];
+            isOneToOne: false;
+            referencedRelation: 'lesson_slides';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'lesson_live_presence_student_id_fkey';
+            columns: ['student_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       lesson_resources: {
         Row: {
           class_id: string;
@@ -502,89 +627,6 @@ export type Database = {
             columns: ['resource_id'];
             isOneToOne: false;
             referencedRelation: 'lesson_resources';
-            referencedColumns: ['id'];
-          },
-        ];
-      };
-      lesson_live_presence: {
-        Row: {
-          class_id: string;
-          following_teacher: boolean;
-          id: string;
-          is_present: boolean;
-          joined_at: string;
-          last_event_type: string | null;
-          last_seen_at: string;
-          left_at: string | null;
-          pacing_mode: Database['public']['Enums']['slide_pacing_mode'] | null;
-          resource_id: string | null;
-          slide_id: string | null;
-          slide_index: number | null;
-          student_id: string;
-          submissions_enabled: boolean;
-          updated_at: string;
-        };
-        Insert: {
-          class_id: string;
-          following_teacher?: boolean;
-          id?: string;
-          is_present?: boolean;
-          joined_at?: string;
-          last_event_type?: string | null;
-          last_seen_at?: string;
-          left_at?: string | null;
-          pacing_mode?: Database['public']['Enums']['slide_pacing_mode'] | null;
-          resource_id?: string | null;
-          slide_id?: string | null;
-          slide_index?: number | null;
-          student_id: string;
-          submissions_enabled?: boolean;
-          updated_at?: string;
-        };
-        Update: {
-          class_id?: string;
-          following_teacher?: boolean;
-          id?: string;
-          is_present?: boolean;
-          joined_at?: string;
-          last_event_type?: string | null;
-          last_seen_at?: string;
-          left_at?: string | null;
-          pacing_mode?: Database['public']['Enums']['slide_pacing_mode'] | null;
-          resource_id?: string | null;
-          slide_id?: string | null;
-          slide_index?: number | null;
-          student_id?: string;
-          submissions_enabled?: boolean;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: 'lesson_live_presence_class_id_fkey';
-            columns: ['class_id'];
-            isOneToOne: false;
-            referencedRelation: 'classes';
-            referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'lesson_live_presence_resource_id_fkey';
-            columns: ['resource_id'];
-            isOneToOne: false;
-            referencedRelation: 'lesson_resources';
-            referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'lesson_live_presence_slide_id_fkey';
-            columns: ['slide_id'];
-            isOneToOne: false;
-            referencedRelation: 'lesson_slides';
-            referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'lesson_live_presence_student_id_fkey';
-            columns: ['student_id'];
-            isOneToOne: false;
-            referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
         ];
@@ -970,6 +1012,19 @@ export type Database = {
     };
     Functions: {
       find_class_id_by_join_code: { Args: { code: string }; Returns: string };
+      set_live_lesson_resource: {
+        Args: { make_live: boolean; target_resource_id: string };
+        Returns: undefined;
+      };
+      upsert_teacher_slide_overlay: {
+        Args: {
+          next_teacher_annotations?: Json;
+          next_teacher_comment?: string;
+          target_slide_id: string;
+          target_student_id: string;
+        };
+        Returns: undefined;
+      };
     };
     Enums: {
       assignment_status: 'draft' | 'published' | 'archived';
@@ -977,6 +1032,7 @@ export type Database = {
       help_request_status: 'open' | 'acknowledged' | 'resolved';
       lesson_conversion_status: 'none' | 'pending' | 'ready' | 'failed';
       lesson_file_type: 'pdf' | 'pptx' | 'docx' | 'image' | 'video' | 'link';
+      lesson_task_kind: 'quiz' | 'assignment' | 'project';
       library_item_type: 'quiz' | 'lesson' | 'activity' | 'video';
       lms_provider: 'google_classroom' | 'canvas' | 'schoology' | 'clever';
       page_source_type: 'blank_canvas' | 'pdf' | 'image' | 'slide' | 'video' | 'question' | 'link';
@@ -1128,6 +1184,54 @@ export type CompositeTypes<
     ? DefaultSchema['CompositeTypes'][PublicCompositeTypeNameOrOptions]
     : never;
 
+export const Constants = {
+  public: {
+    Enums: {
+      assignment_status: ['draft', 'published', 'archived'],
+      delivery_mode: ['teacher_paced', 'student_paced', 'front_of_class'],
+      help_request_status: ['open', 'acknowledged', 'resolved'],
+      lesson_conversion_status: ['none', 'pending', 'ready', 'failed'],
+      lesson_file_type: ['pdf', 'pptx', 'docx', 'image', 'video', 'link'],
+      lesson_task_kind: ['quiz', 'assignment', 'project'],
+      library_item_type: ['quiz', 'lesson', 'activity', 'video'],
+      lms_provider: ['google_classroom', 'canvas', 'schoology', 'clever'],
+      page_source_type: ['blank_canvas', 'pdf', 'image', 'slide', 'video', 'question', 'link'],
+      question_type: [
+        'multiple_choice',
+        'true_false',
+        'short_answer',
+        'fill_blank',
+        'open_ended',
+        'draw',
+        'audio_response',
+        'video_response',
+        'drag_drop',
+        'matching',
+        'graphing',
+        'hotspot',
+        'labeling',
+        'reorder',
+        'poll',
+      ],
+      slide_activity_tag: [
+        'title_objectives',
+        'warm_up',
+        'main_idea',
+        'solved_examples',
+        'guided_practice',
+        'independent_activity',
+        'group_activity',
+        'challenge_extra',
+        'exit_ticket',
+      ],
+      slide_pacing_mode: ['teacher_paced', 'student_paced'],
+      stroke_author_role: ['student', 'teacher'],
+      submission_status: ['not_started', 'in_progress', 'submitted', 'graded'],
+      user_role: ['teacher', 'student', 'admin'],
+    },
+  },
+} as const;
+
 // ---------------------------------------------------------------------------
 // Convenience aliases used across the app — kept stable across regenerations.
 // ---------------------------------------------------------------------------
@@ -1143,6 +1247,7 @@ export type HelpRequestStatus = Enums<'help_request_status'>;
 export type LibraryItemType = Enums<'library_item_type'>;
 export type LmsProvider = Enums<'lms_provider'>;
 export type LessonFileType = Enums<'lesson_file_type'>;
+export type LessonTaskKind = Enums<'lesson_task_kind'>;
 export type LessonConversionStatus = Enums<'lesson_conversion_status'>;
 export type SlideActivityTag = Enums<'slide_activity_tag'>;
 export type SlidePacingMode = Enums<'slide_pacing_mode'>;
@@ -1169,5 +1274,6 @@ export type LeaderboardEntry = Tables<'leaderboard_entries'>;
 export type LmsConnection = Tables<'lms_connections'>;
 export type LessonResource = Tables<'lesson_resources'>;
 export type LessonSlide = Tables<'lesson_slides'>;
+export type LessonAttachedTask = Tables<'lesson_attached_tasks'>;
 export type LessonLivePresence = Tables<'lesson_live_presence'>;
 export type SlideSubmission = Tables<'slide_submissions'>;

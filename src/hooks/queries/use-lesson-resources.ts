@@ -100,10 +100,12 @@ export function useLessonResources(classId: string | null) {
       mimeType: string | null;
       size: number | null;
     }) => {
+      if (!classId) throw new Error('No class selected.');
+
       const response = await fetch(input.uri);
       const blob = await response.blob();
       const fileType = inferFileType(input.mimeType);
-      const path = `${classId!}/${input.weekNumber}/${input.weekNumber}-${Date.now()}-${input.filename}`;
+      const path = `${classId}/${input.weekNumber}/${input.weekNumber}-${Date.now()}-${input.filename}`;
 
       await uploadImageBlob(path, blob, input.mimeType ?? 'application/octet-stream');
 

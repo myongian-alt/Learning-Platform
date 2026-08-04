@@ -6,6 +6,7 @@ import type { LessonLivePresence, SlidePacingMode, SlideSubmission } from '@/typ
 
 import type { SlideObject, SlideStroke, ViewableSlide } from './use-lesson-slides';
 import { useLessonSlides } from './use-lesson-slides';
+import type { StudentLivePresencePayload } from './use-live-class-session';
 import { useLiveClassSessions, useStudentLiveClassPresence } from './use-live-class-session';
 
 interface MonitorStudentProfile {
@@ -50,6 +51,51 @@ export interface LessonMonitorStudent {
   objects: SlideObject[];
   teacher_annotations: SlideStroke[];
   teacher_comment: string | null;
+}
+
+// The ephemeral realtime payload (camelCase) and the persisted DB row (snake_case)
+// carry the same information under different shapes — normalize to one before use so
+// the rest of this file has a single discriminant point instead of re-deriving
+// `live?.resourceId === resourceId` per field (which `tsc` can't correlate across
+// separate expressions, even though the branches are runtime-consistent).
+interface EffectivePresence {
+  lastActiveAt: string | null;
+  slideId: string | null;
+  slideIndex: number | null;
+  pacingMode: SlidePacingMode | null;
+  followingTeacher: boolean;
+  submissionsEnabled: boolean;
+  lastEventType: string | null;
+}
+
+function normalizePresence(
+  live: StudentLivePresencePayload | undefined,
+  persisted: LessonLivePresence | undefined,
+  resourceId: string | null,
+): EffectivePresence | null {
+  if (live?.resourceId === resourceId) {
+    return {
+      lastActiveAt: live.lastActiveAt,
+      slideId: live.slideId,
+      slideIndex: live.slideIndex,
+      pacingMode: live.pacingMode,
+      followingTeacher: live.followingTeacher,
+      submissionsEnabled: live.submissionsEnabled,
+      lastEventType: live.lastEventType,
+    };
+  }
+  if (persisted?.resource_id === resourceId) {
+    return {
+      lastActiveAt: persisted.last_seen_at,
+      slideId: persisted.slide_id,
+      slideIndex: persisted.slide_index,
+      pacingMode: persisted.pacing_mode,
+      followingTeacher: persisted.following_teacher,
+      submissionsEnabled: persisted.submissions_enabled,
+      lastEventType: persisted.last_event_type,
+    };
+  }
+  return null;
 }
 
 function computeSignal(lastActiveAt: string | null, isOnlineNow: boolean): {
@@ -163,16 +209,12 @@ export function useLessonLiveMonitor(classId: string | null, resourceId: string 
       const profile = row.profiles;
       const live = liveStudents[row.student_id];
       const persisted = persistedByStudent.get(row.student_id);
-      const effectivePresence =
-        live?.resourceId === resourceId ? live : persisted?.resource_id === resourceId ? persisted : null;
-      const lastActiveAt =
-        live?.resourceId === resourceId ? live.lastActiveAt : effectivePresence?.last_seen_at ?? null;
+      const effectivePresence = normalizePresence(live, persisted, resourceId);
+      const lastActiveAt = effectivePresence?.lastActiveAt ?? null;
       const isOnlineNow = Boolean(live && live.resourceId === resourceId);
       const { signal, inactivityMs } = computeSignal(lastActiveAt, isOnlineNow);
-      const slideId =
-        live?.resourceId === resourceId ? live.slideId : effectivePresence?.slide_id ?? null;
-      const slideIndex =
-        live?.resourceId === resourceId ? live.slideIndex : effectivePresence?.slide_index ?? null;
+      const slideId = effectivePresence?.slideId ?? null;
+      const slideIndex = effectivePresence?.slideIndex ?? null;
       const submission = slideId
         ? submissionByStudentAndSlide.get(`${row.student_id}:${slideId}`)
         : null;
@@ -194,16 +236,12 @@ export function useLessonLiveMonitor(classId: string | null, resourceId: string 
         resourceId,
         slideId,
         slideIndex,
-        pacingMode:
-          live?.resourceId === resourceId ? live.pacingMode : effectivePresence?.pacing_mode ?? null,
-        followingTeacher:
-          live?.resourceId === resourceId ? live.followingTeacher : effectivePresence?.following_teacher ?? false,
-        submissionsEnabled:
-          live?.resourceId === resourceId ? live.submissionsEnabled : effectivePresence?.submissions_enabled ?? false,
+        pacingMode: effectivePresence?.pacingMode ?? null,
+        followingTeacher: effectivePresence?.followingTeacher ?? false,
+        submissionsEnabled: effectivePresence?.submissionsEnabled ?? false,
         submittedCurrentSlide: Boolean(submission?.submitted_at),
         lastActiveAt,
-        lastEventType:
-          live?.resourceId === resourceId ? live.lastEventType : effectivePresence?.last_event_type ?? null,
+        lastEventType: effectivePresence?.lastEventType ?? null,
         inactivityMs,
         isOnTeacherSlide:
           teacherLive?.resourceId === resourceId && teacherLive.slideId && slideId

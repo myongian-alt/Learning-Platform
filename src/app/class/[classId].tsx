@@ -25,10 +25,12 @@ import { useClassAssignments } from '@/hooks/queries/use-class-assignments';
 import { useClassDetail } from '@/hooks/queries/use-class-detail';
 import { useClassRoster } from '@/hooks/queries/use-class-roster';
 import { useCreateAssignment } from '@/hooks/queries/use-create-assignment';
+import { useLessonAttachedTasks } from '@/hooks/queries/use-lesson-attached-tasks';
 import { useLessonResources } from '@/hooks/queries/use-lesson-resources';
 import { useLessonSlides } from '@/hooks/queries/use-lesson-slides';
 import { signOut } from '@/lib/auth-actions';
 import { useAuthStore } from '@/store/auth-store';
+import { supabase } from '@/lib/supabase';
 import type { LessonFileType, LessonResource } from '@/types/database';
 
 const TOTAL_WEEKS = 15;
@@ -114,9 +116,6 @@ export default function ClassLessonsScreen() {
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [taskPickerWeek, setTaskPickerWeek] = useState<number | null>(null);
   const [taskPickerResourceId, setTaskPickerResourceId] = useState<string | null>(null);
-  const [attachedTasksByResource, setAttachedTasksByResource] = useState<
-    Record<string, LessonTaskKind[]>
-  >({});
   const [viewing, setViewing] = useState<{ resource: LessonResource; startIndex: number } | null>(
     null,
   );
@@ -201,24 +200,22 @@ export default function ClassLessonsScreen() {
     showFlash(kind === 'quiz' ? 'Quizzes & games are coming soon.' : 'Projects are coming soon.');
   };
 
-  const attachTaskToResource = (resourceId: string, kind: LessonTaskKind) => {
-    setAttachedTasksByResource((prev) => ({
-      ...prev,
-      [resourceId]: [...(prev[resourceId] ?? []), kind],
-    }));
-  };
+  const attachTaskToResource = async (resourceId: string, kind: LessonTaskKind) => {
+    const { data: latest, error: latestError } = await supabase
+      .from('lesson_attached_tasks')
+      .select('position')
+      .eq('resource_id', resourceId)
+      .order('position', { ascending: false })
+      .limit(1);
+    if (latestError) throw latestError;
 
-  const removeAttachedTaskFromResource = (resourceId: string, taskIndex: number) => {
-    setAttachedTasksByResource((prev) => {
-      const current = prev[resourceId] ?? [];
-      if (!current[taskIndex]) return prev;
-      const nextTasks = current.filter((_, i) => i !== taskIndex);
-      if (nextTasks.length === 0) {
-        const { [resourceId]: _removed, ...rest } = prev;
-        return rest;
-      }
-      return { ...prev, [resourceId]: nextTasks };
-    });
+    const nextPosition = (latest?.[0]?.position ?? 0) + 1;
+    const { error } = await supabase
+      .from('lesson_attached_tasks')
+      .insert({ resource_id: resourceId, kind, position: nextPosition });
+    if (error) throw error;
+
+    queryClient.invalidateQueries({ queryKey: ['lesson-attached-tasks', resourceId] });
   };
 
   if (profile?.role === 'student') {
@@ -321,8 +318,6 @@ export default function ClassLessonsScreen() {
                   setTaskPickerWeek(week);
                   setTaskPickerOpen(true);
                 }}
-                attachedTasksByResource={attachedTasksByResource}
-                onRemoveAttachedTask={removeAttachedTaskFromResource}
                 onToggleLiveSession={(resource, live) =>
                   setLiveSession.mutate({ resourceId: resource.id, live }, {
                     onSuccess: () => showFlash(live ? `${resource.title} is now live.` : `${resource.title} is no longer live.`),
@@ -403,7 +398,11 @@ export default function ClassLessonsScreen() {
           }}
           onActivityTap={(kind) => {
             handleActivityTap(kind, taskPickerWeek ?? selectedWeek);
-            if (taskPickerResourceId) attachTaskToResource(taskPickerResourceId, kind);
+            if (taskPickerResourceId) {
+              attachTaskToResource(taskPickerResourceId, kind).catch(() => {
+                showFlash("Couldn't attach task to this lesson.");
+              });
+            }
             setTaskPickerOpen(false);
             setTaskPickerWeek(null);
             setTaskPickerResourceId(null);
@@ -473,8 +472,6 @@ interface LessonsSectionProps {
   onBrowseFiles: (week: number) => void;
   uploading: boolean;
   onAddTaskPress: (resourceId: string, week: number) => void;
-  attachedTasksByResource: Record<string, LessonTaskKind[]>;
-  onRemoveAttachedTask: (resourceId: string, taskIndex: number) => void;
   onToggleLiveSession: (resource: LessonResource, live: boolean) => void;
   onViewProgress: (resource: LessonResource) => void;
   fileActions: FileActions;
@@ -491,8 +488,6 @@ function LessonsSection({
   onBrowseFiles,
   uploading,
   onAddTaskPress,
-  attachedTasksByResource,
-  onRemoveAttachedTask,
   onToggleLiveSession,
   onViewProgress,
   fileActions,
@@ -531,8 +526,6 @@ function LessonsSection({
           onBrowseFiles={() => onBrowseFiles(selectedWeek)}
           uploading={uploading}
           onAddTaskPress={onAddTaskPress}
-          attachedTasksByResource={attachedTasksByResource}
-          onRemoveAttachedTask={onRemoveAttachedTask}
           onToggleLiveSession={onToggleLiveSession}
           onViewProgress={onViewProgress}
           fileActions={fileActions}
@@ -563,8 +556,6 @@ function OpenWeekView({
   onBrowseFiles,
   uploading,
   onAddTaskPress,
-  attachedTasksByResource,
-  onRemoveAttachedTask,
   onToggleLiveSession,
   onViewProgress,
   fileActions,
@@ -577,8 +568,6 @@ function OpenWeekView({
   onBrowseFiles: () => void;
   uploading: boolean;
   onAddTaskPress: (resourceId: string, week: number) => void;
-  attachedTasksByResource: Record<string, LessonTaskKind[]>;
-  onRemoveAttachedTask: (resourceId: string, taskIndex: number) => void;
   onToggleLiveSession: (resource: LessonResource, live: boolean) => void;
   onViewProgress: (resource: LessonResource) => void;
   fileActions: FileActions;
@@ -607,8 +596,6 @@ function OpenWeekView({
               <SlideThumbnailGroup
                 key={lesson.id}
                 resource={lesson}
-                attachedTasks={attachedTasksByResource[lesson.id] ?? []}
-                onRemoveAttachedTask={(taskIndex) => onRemoveAttachedTask(lesson.id, taskIndex)}
                 onAddTaskPress={() => onAddTaskPress(lesson.id, lesson.week_number)}
                 onToggleLiveSession={onToggleLiveSession}
                 onViewProgress={onViewProgress}
@@ -732,16 +719,12 @@ function OtherWeeksStrip({
 
 function SlideThumbnailGroup({
   resource,
-  attachedTasks,
-  onRemoveAttachedTask,
   onAddTaskPress,
   onToggleLiveSession,
   onViewProgress,
   actions,
 }: {
   resource: LessonResource;
-  attachedTasks: LessonTaskKind[];
-  onRemoveAttachedTask: (taskIndex: number) => void;
   onAddTaskPress: () => void;
   onToggleLiveSession: (resource: LessonResource, live: boolean) => void;
   onViewProgress: (resource: LessonResource) => void;
@@ -756,6 +739,7 @@ function SlideThumbnailGroup({
     moveSlide,
     deleteSlide,
   } = useLessonSlides(resource.id);
+  const { data: attachedTasks, removeTask } = useLessonAttachedTasks(resource.id);
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState(resource.title);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -1025,10 +1009,10 @@ function SlideThumbnailGroup({
           <Text className="text-center text-[10px] font-medium text-ink/45">After Slide {slides?.length ?? 0}</Text>
         </Pressable>
 
-        {attachedTasks.map((task, i) => {
-          const meta = LESSON_TASK_META[task];
+        {(attachedTasks ?? []).map((task, i) => {
+          const meta = LESSON_TASK_META[task.kind];
           return (
-            <View key={`${resource.id}-task-${task}-${i}`} style={{ width: 124 }} className="gap-1">
+            <View key={task.id} style={{ width: 124 }} className="gap-1">
               <View
                 style={{
                   height: 90,
@@ -1049,7 +1033,11 @@ function SlideThumbnailGroup({
                 </Text>
                 <Text className="text-[9px] text-ink/45">Task attached</Text>
                 <Pressable
-                  onPress={() => onRemoveAttachedTask(i)}
+                  onPress={() =>
+                    removeTask.mutate(task.id, {
+                      onError: (error) => Alert.alert('Could not remove task', error.message),
+                    })
+                  }
                   className="absolute right-1 top-1 h-5 w-5 items-center justify-center rounded-full bg-white/90"
                   accessibilityLabel="Delete task"
                 >
