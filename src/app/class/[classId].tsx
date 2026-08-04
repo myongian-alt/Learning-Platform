@@ -80,6 +80,7 @@ export default function ClassLessonsScreen() {
 
   const [section, setSection] = useState<Section>('lessons');
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
+  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [viewing, setViewing] = useState<{ resource: LessonResource; startIndex: number } | null>(
     null,
   );
@@ -110,6 +111,7 @@ export default function ClassLessonsScreen() {
     if (key === 'classes') return router.push('/classes');
     if (key === 'assignments') return router.push('/(teacher)/assignments');
     if (key === 'reports') return router.push('/(teacher)/reports');
+    setTaskPickerOpen(false);
     setSection(key as Section);
   };
 
@@ -256,6 +258,7 @@ export default function ClassLessonsScreen() {
                 onSearchChange={setSearch}
                 onBrowseFiles={handleBrowseFiles}
                 uploading={uploadFile.isPending}
+                onAddTaskPress={() => setTaskPickerOpen(true)}
                 onToggleLiveSession={(resource, live) =>
                   setLiveSession.mutate({ resourceId: resource.id, live }, {
                     onSuccess: () => showFlash(live ? `${resource.title} is now live.` : `${resource.title} is no longer live.`),
@@ -298,10 +301,6 @@ export default function ClassLessonsScreen() {
               />
             )}
           </ScrollView>
-
-          {section === 'lessons' && (
-            <RightPanel onActivityTap={handleActivityTap} selectedWeek={selectedWeek} />
-          )}
         </View>
 
         {/* Bottom stats bar */}
@@ -329,6 +328,17 @@ export default function ClassLessonsScreen() {
           </View>
         </View>
       </View>
+
+      {section === 'lessons' && taskPickerOpen && (
+        <TaskPickerOverlay
+          selectedWeek={selectedWeek}
+          onClose={() => setTaskPickerOpen(false)}
+          onActivityTap={(kind) => {
+            handleActivityTap(kind);
+            setTaskPickerOpen(false);
+          }}
+        />
+      )}
 
       {flash && (
         <View className="absolute bottom-16 right-6 rounded-xl bg-ink px-4 py-3 shadow-lg">
@@ -391,6 +401,7 @@ interface LessonsSectionProps {
   onSearchChange: (v: string) => void;
   onBrowseFiles: (week: number) => void;
   uploading: boolean;
+  onAddTaskPress: () => void;
   onToggleLiveSession: (resource: LessonResource, live: boolean) => void;
   onViewProgress: (resource: LessonResource) => void;
   fileActions: FileActions;
@@ -406,6 +417,7 @@ function LessonsSection({
   onSearchChange,
   onBrowseFiles,
   uploading,
+  onAddTaskPress,
   onToggleLiveSession,
   onViewProgress,
   fileActions,
@@ -418,6 +430,13 @@ function LessonsSection({
           <Text className="text-sm text-ink/50">Organize and manage your lessons by week</Text>
         </View>
         <View className="flex-row items-center gap-2">
+          <Pressable
+            onPress={onAddTaskPress}
+            className="flex-row items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 active:bg-violet-700"
+          >
+            <Feather name="plus" size={14} color="#fff" />
+            <Text className="text-sm font-semibold text-white">Add a Task</Text>
+          </Pressable>
           <View className="w-72 flex-row items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2.5">
             <Feather name="search" size={15} color="#9ca3af" />
             <TextInput
@@ -992,7 +1011,53 @@ function FileCard({ resource, actions }: { resource: LessonResource; actions: Fi
   );
 }
 
-function ActivityCard({
+function TaskPickerOverlay({
+  onClose,
+  onActivityTap,
+  selectedWeek,
+}: {
+  onClose: () => void;
+  onActivityTap: (kind: 'quiz' | 'assignment' | 'project') => void;
+  selectedWeek: number | null;
+}) {
+  return (
+    <View className="absolute inset-0 z-20 items-center justify-center px-4">
+      <Pressable className="absolute inset-0 bg-black/25" onPress={onClose} />
+      <View className="w-full max-w-[430px] gap-5 rounded-3xl bg-white p-4 shadow-2xl">
+        <View className="gap-1 px-1">
+          <Text className="text-lg font-bold text-ink">Add a Task</Text>
+          <Text className="text-sm text-ink/50">
+            {selectedWeek ? `Tap to add this activity to Week ${selectedWeek}` : 'Choose an activity type to continue'}
+          </Text>
+        </View>
+
+        <TaskOptionCard
+          color="violet"
+          icon={<Ionicons name="game-controller" size={20} color="#fff" />}
+          title="Quizzis & Games"
+          description="Add interactive quizzes, polls, and games"
+          onPress={() => onActivityTap('quiz')}
+        />
+        <TaskOptionCard
+          color="emerald"
+          icon={<Feather name="file-text" size={20} color="#fff" />}
+          title="Assignment / Homework"
+          description="Create assignments and homework tasks"
+          onPress={() => onActivityTap('assignment')}
+        />
+        <TaskOptionCard
+          color="amber"
+          icon={<Feather name="folder" size={20} color="#fff" />}
+          title="Projects"
+          description="Add projects and long-term tasks"
+          onPress={() => onActivityTap('project')}
+        />
+      </View>
+    </View>
+  );
+}
+
+function TaskOptionCard({
   color,
   icon,
   title,
@@ -1005,97 +1070,35 @@ function ActivityCard({
   description: string;
   onPress: () => void;
 }) {
-  const bg = { violet: 'bg-violet-50', emerald: 'bg-emerald-50', amber: 'bg-amber-50' }[color];
-  const iconBg = { violet: 'bg-violet-600', emerald: 'bg-emerald-600', amber: 'bg-amber-500' }[
-    color
-  ];
-  const text = { violet: 'text-violet-700', emerald: 'text-emerald-700', amber: 'text-amber-700' }[
-    color
-  ];
+  const bg = {
+    violet: 'bg-violet-50',
+    emerald: 'bg-emerald-50',
+    amber: 'bg-amber-50',
+  }[color];
+  const iconBg = {
+    violet: 'bg-violet-600',
+    emerald: 'bg-emerald-600',
+    amber: 'bg-amber-500',
+  }[color];
+  const text = {
+    violet: 'text-violet-700',
+    emerald: 'text-emerald-700',
+    amber: 'text-amber-700',
+  }[color];
 
   return (
-    <Pressable onPress={onPress} className={`gap-1.5 rounded-xl p-3 ${bg}`}>
+    <Pressable onPress={onPress} className={`gap-2 rounded-3xl p-6 ${bg}`}>
       <View className="flex-row items-start justify-between">
-        <View className={`h-7 w-7 items-center justify-center rounded-lg ${iconBg}`}>{icon}</View>
-        <Feather name="menu" size={12} color="rgba(0,0,0,0.25)" />
+        <View className={`h-14 w-14 items-center justify-center rounded-2xl ${iconBg}`}>{icon}</View>
+        <Feather name="menu" size={20} color="rgba(0,0,0,0.25)" />
       </View>
-      <Text className={`text-[13px] font-bold ${text}`}>{title}</Text>
-      <Text className="text-[11px] leading-4 text-ink/50">{description}</Text>
+      <Text className={`text-[40px] font-bold leading-[42px] ${text}`}>
+        {title}
+      </Text>
+      <Text className="text-base leading-7 text-ink/50">
+        {description}
+      </Text>
     </Pressable>
-  );
-}
-
-function RightPanel({
-  onActivityTap,
-  selectedWeek,
-}: {
-  onActivityTap: (kind: 'quiz' | 'assignment' | 'project') => void;
-  selectedWeek: number | null;
-}) {
-  const steps = [
-    'Click on a week folder',
-    'Create or upload your lesson',
-    'Drag activities to link with the lesson',
-    'Everything is saved automatically',
-  ];
-
-  return (
-    <View className="w-60 border-l border-black/5 bg-white">
-      <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4">
-        <View>
-          <Text className="text-sm font-bold text-ink">Add Activities</Text>
-          <Text className="text-[11px] text-ink/50">
-            {selectedWeek
-              ? `Tap to add to Week ${selectedWeek}`
-              : 'Drag and drop to connect with a week or lesson'}
-          </Text>
-        </View>
-
-        <ActivityCard
-          color="violet"
-          icon={<Ionicons name="game-controller" size={14} color="#fff" />}
-          title="Quizzis & Games"
-          description="Add interactive quizzes, polls, and games"
-          onPress={() => onActivityTap('quiz')}
-        />
-        <ActivityCard
-          color="emerald"
-          icon={<Feather name="file-text" size={14} color="#fff" />}
-          title="Assignment / Homework"
-          description="Create assignments and homework tasks"
-          onPress={() => onActivityTap('assignment')}
-        />
-        <ActivityCard
-          color="amber"
-          icon={<Feather name="folder" size={14} color="#fff" />}
-          title="Projects"
-          description="Add projects and long-term tasks"
-          onPress={() => onActivityTap('project')}
-        />
-
-        <View className="gap-2">
-          <Text className="text-xs font-bold text-ink">How it works</Text>
-          {steps.map((step, i) => (
-            <View key={step} className="flex-row items-start gap-2">
-              <View className="h-4 w-4 items-center justify-center rounded-full bg-violet-500">
-                <Text className="text-[9px] font-bold text-white">{i + 1}</Text>
-              </View>
-              <Text className="flex-1 text-[11px] leading-4 text-ink/60">{step}</Text>
-            </View>
-          ))}
-        </View>
-
-        <View className="gap-1 rounded-xl bg-amber-50 p-3">
-          <View className="flex-row items-center gap-1.5">
-            <Ionicons name="bulb-outline" size={13} color="#b45309" />
-            <Text className="text-xs font-bold text-amber-800">Quick Tip</Text>
-          </View>
-          <Text className="text-[11px] leading-4 text-amber-900/70">
-            You can also drag activities directly onto a lesson after opening the week folder.
-          </Text>
-        </View>
-      </ScrollView>
-    </View>
   );
 }
 
