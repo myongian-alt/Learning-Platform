@@ -81,6 +81,7 @@ export default function ClassLessonsScreen() {
   const [section, setSection] = useState<Section>('lessons');
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [taskPickerWeek, setTaskPickerWeek] = useState<number | null>(null);
   const [viewing, setViewing] = useState<{ resource: LessonResource; startIndex: number } | null>(
     null,
   );
@@ -112,6 +113,7 @@ export default function ClassLessonsScreen() {
     if (key === 'assignments') return router.push('/(teacher)/assignments');
     if (key === 'reports') return router.push('/(teacher)/reports');
     setTaskPickerOpen(false);
+    setTaskPickerWeek(null);
     setSection(key as Section);
   };
 
@@ -143,17 +145,21 @@ export default function ClassLessonsScreen() {
     );
   };
 
-  const handleActivityTap = (kind: 'quiz' | 'assignment' | 'project') => {
-    if (!selectedWeek) {
+  const handleActivityTap = (
+    kind: 'quiz' | 'assignment' | 'project',
+    targetWeek?: number | null,
+  ) => {
+    const weekForTask = targetWeek ?? selectedWeek;
+    if (!weekForTask) {
       showFlash('Select a week first.');
       return;
     }
     if (kind === 'assignment') {
       createAssignment.mutate(
-        { classId, title: `Week ${selectedWeek} Assignment`, weekNumber: selectedWeek },
+        { classId, title: `Week ${weekForTask} Assignment`, weekNumber: weekForTask },
         {
           onSuccess: () => {
-            showFlash(`Assignment added to Week ${selectedWeek}`);
+            showFlash(`Assignment added to Week ${weekForTask}`);
             queryClient.invalidateQueries({ queryKey: ['class-assignments', classId] });
           },
         },
@@ -258,7 +264,10 @@ export default function ClassLessonsScreen() {
                 onSearchChange={setSearch}
                 onBrowseFiles={handleBrowseFiles}
                 uploading={uploadFile.isPending}
-                onAddTaskPress={() => setTaskPickerOpen(true)}
+                onAddTaskPress={(week) => {
+                  setTaskPickerWeek(week);
+                  setTaskPickerOpen(true);
+                }}
                 onToggleLiveSession={(resource, live) =>
                   setLiveSession.mutate({ resourceId: resource.id, live }, {
                     onSuccess: () => showFlash(live ? `${resource.title} is now live.` : `${resource.title} is no longer live.`),
@@ -331,11 +340,15 @@ export default function ClassLessonsScreen() {
 
       {section === 'lessons' && taskPickerOpen && (
         <TaskPickerOverlay
-          selectedWeek={selectedWeek}
-          onClose={() => setTaskPickerOpen(false)}
-          onActivityTap={(kind) => {
-            handleActivityTap(kind);
+          selectedWeek={taskPickerWeek ?? selectedWeek}
+          onClose={() => {
             setTaskPickerOpen(false);
+            setTaskPickerWeek(null);
+          }}
+          onActivityTap={(kind) => {
+            handleActivityTap(kind, taskPickerWeek ?? selectedWeek);
+            setTaskPickerOpen(false);
+            setTaskPickerWeek(null);
           }}
         />
       )}
@@ -401,7 +414,7 @@ interface LessonsSectionProps {
   onSearchChange: (v: string) => void;
   onBrowseFiles: (week: number) => void;
   uploading: boolean;
-  onAddTaskPress: () => void;
+  onAddTaskPress: (week: number) => void;
   onToggleLiveSession: (resource: LessonResource, live: boolean) => void;
   onViewProgress: (resource: LessonResource) => void;
   fileActions: FileActions;
@@ -430,13 +443,6 @@ function LessonsSection({
           <Text className="text-sm text-ink/50">Organize and manage your lessons by week</Text>
         </View>
         <View className="flex-row items-center gap-2">
-          <Pressable
-            onPress={onAddTaskPress}
-            className="flex-row items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 active:bg-violet-700"
-          >
-            <Feather name="plus" size={14} color="#fff" />
-            <Text className="text-sm font-semibold text-white">Add a Task</Text>
-          </Pressable>
           <View className="w-72 flex-row items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2.5">
             <Feather name="search" size={15} color="#9ca3af" />
             <TextInput
@@ -462,6 +468,7 @@ function LessonsSection({
           onSelectWeek={onSelectWeek}
           onBrowseFiles={() => onBrowseFiles(selectedWeek)}
           uploading={uploading}
+          onAddTaskPress={onAddTaskPress}
           onToggleLiveSession={onToggleLiveSession}
           onViewProgress={onViewProgress}
           fileActions={fileActions}
@@ -491,6 +498,7 @@ function OpenWeekView({
   onSelectWeek,
   onBrowseFiles,
   uploading,
+  onAddTaskPress,
   onToggleLiveSession,
   onViewProgress,
   fileActions,
@@ -502,6 +510,7 @@ function OpenWeekView({
   onSelectWeek: (week: number) => void;
   onBrowseFiles: () => void;
   uploading: boolean;
+  onAddTaskPress: (week: number) => void;
   onToggleLiveSession: (resource: LessonResource, live: boolean) => void;
   onViewProgress: (resource: LessonResource) => void;
   fileActions: FileActions;
@@ -530,12 +539,18 @@ function OpenWeekView({
               <SlideThumbnailGroup
                 key={lesson.id}
                 resource={lesson}
+                onAddTaskPress={() => onAddTaskPress(lesson.week_number)}
                 onToggleLiveSession={onToggleLiveSession}
                 onViewProgress={onViewProgress}
                 actions={fileActions}
               />
             ) : (
-              <FileCard key={lesson.id} resource={lesson} actions={fileActions} />
+              <FileCard
+                key={lesson.id}
+                resource={lesson}
+                onAddTaskPress={() => onAddTaskPress(lesson.week_number)}
+                actions={fileActions}
+              />
             ),
           )}
         </View>
@@ -647,11 +662,13 @@ function OtherWeeksStrip({
 
 function SlideThumbnailGroup({
   resource,
+  onAddTaskPress,
   onToggleLiveSession,
   onViewProgress,
   actions,
 }: {
   resource: LessonResource;
+  onAddTaskPress: () => void;
   onToggleLiveSession: (resource: LessonResource, live: boolean) => void;
   onViewProgress: (resource: LessonResource) => void;
   actions: FileActions;
@@ -694,7 +711,7 @@ function SlideThumbnailGroup({
   };
 
   if (converting || failed) {
-    return <FileCard resource={resource} actions={actions} />;
+    return <FileCard resource={resource} onAddTaskPress={onAddTaskPress} actions={actions} />;
   }
 
   return (
@@ -895,11 +912,29 @@ function SlideThumbnailGroup({
           );
         })}
       </View>
+
+      <View className="mt-1 flex-row justify-end">
+        <Pressable
+          onPress={onAddTaskPress}
+          className="flex-row items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1"
+        >
+          <Feather name="plus" size={10} color="#6d28d9" />
+          <Text className="text-[9px] font-semibold text-violet-700">Additional Resources/Tasks</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
 
-function FileCard({ resource, actions }: { resource: LessonResource; actions: FileActions }) {
+function FileCard({
+  resource,
+  onAddTaskPress,
+  actions,
+}: {
+  resource: LessonResource;
+  onAddTaskPress: () => void;
+  actions: FileActions;
+}) {
   const meta = FILE_TYPE_META[resource.file_type];
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState(resource.title);
@@ -1007,6 +1042,16 @@ function FileCard({ resource, actions }: { resource: LessonResource; actions: Fi
           </Pressable>
         </View>
       )}
+
+      <View className="mt-1 flex-row justify-end">
+        <Pressable
+          onPress={onAddTaskPress}
+          className="flex-row items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1"
+        >
+          <Feather name="plus" size={10} color="#6d28d9" />
+          <Text className="text-[9px] font-semibold text-violet-700">Additional Resources/Tasks</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
