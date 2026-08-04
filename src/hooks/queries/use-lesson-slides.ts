@@ -168,6 +168,79 @@ export function useLessonSlides(resourceId: string | null) {
     },
   });
 
+  const moveSlide = useMutation({
+    mutationFn: async (input: { fromIndex: number; toIndex: number }) => {
+      if (!resourceId) throw new Error('No lesson selected.');
+      const current = [...(query.data ?? [])].sort((a, b) => a.position - b.position);
+      if (current.length < 2) return;
+
+      const from = Math.max(0, Math.min(input.fromIndex, current.length - 1));
+      const to = Math.max(0, Math.min(input.toIndex, current.length - 1));
+      if (from === to) return;
+
+      const [moved] = current.splice(from, 1);
+      current.splice(to, 0, moved);
+
+      // Two-phase rewrite avoids unique conflicts on (resource_id, position).
+      for (let i = 0; i < current.length; i += 1) {
+        const phase1 = await supabase
+          .from('lesson_slides')
+          .update({ position: i + 1 + 1000 })
+          .eq('id', current[i].id);
+        if (phase1.error) throw phase1.error;
+      }
+      for (let i = 0; i < current.length; i += 1) {
+        const phase2 = await supabase
+          .from('lesson_slides')
+          .update({ position: i + 1 })
+          .eq('id', current[i].id);
+        if (phase2.error) throw phase2.error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lesson-slides', resourceId] });
+    },
+  });
+
+  const deleteSlide = useMutation({
+    mutationFn: async (input: { id: string; storagePath: string | null }) => {
+      if (!resourceId) throw new Error('No lesson selected.');
+
+      if (input.storagePath) {
+        const removed = await supabase.storage.from('lesson-files').remove([input.storagePath]);
+        if (removed.error) throw removed.error;
+      }
+
+      const { error } = await supabase.from('lesson_slides').delete().eq('id', input.id);
+      if (error) throw error;
+
+      const { data: remaining, error: fetchError } = await supabase
+        .from('lesson_slides')
+        .select('id,position')
+        .eq('resource_id', resourceId)
+        .order('position', { ascending: true });
+      if (fetchError) throw fetchError;
+
+      for (let i = 0; i < (remaining ?? []).length; i += 1) {
+        const phase1 = await supabase
+          .from('lesson_slides')
+          .update({ position: i + 1 + 1000 })
+          .eq('id', remaining![i].id);
+        if (phase1.error) throw phase1.error;
+      }
+      for (let i = 0; i < (remaining ?? []).length; i += 1) {
+        const phase2 = await supabase
+          .from('lesson_slides')
+          .update({ position: i + 1 })
+          .eq('id', remaining![i].id);
+        if (phase2.error) throw phase2.error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lesson-slides', resourceId] });
+    },
+  });
+
   const addBlankSlide = useMutation({
     mutationFn: async () => {
       if (!resourceId) throw new Error('No lesson selected.');
@@ -252,6 +325,8 @@ export function useLessonSlides(resourceId: string | null) {
     updateSlidesPacing,
     saveAnnotations,
     saveObjects,
+    moveSlide,
+    deleteSlide,
     addBlankSlide,
     appendSlidesFromFile,
   };

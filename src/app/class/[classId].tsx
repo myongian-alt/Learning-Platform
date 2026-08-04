@@ -47,6 +47,34 @@ const FILE_TYPE_META: Record<
 };
 
 type Section = 'lessons' | 'quizzes' | 'gradebook' | 'students' | 'groups' | 'settings';
+type LessonTaskKind = 'quiz' | 'assignment' | 'project';
+
+const LESSON_TASK_META: Record<
+  LessonTaskKind,
+  { label: string; shortLabel: string; color: string; bg: string; icon: keyof typeof Feather.glyphMap }
+> = {
+  quiz: {
+    label: 'Quizzis & Games',
+    shortLabel: 'Quiz / Game',
+    color: '#7c3aed',
+    bg: '#f3e8ff',
+    icon: 'activity',
+  },
+  assignment: {
+    label: 'Assignment / Homework',
+    shortLabel: 'Assignment',
+    color: '#047857',
+    bg: '#ecfdf5',
+    icon: 'file-text',
+  },
+  project: {
+    label: 'Projects',
+    shortLabel: 'Project',
+    color: '#b45309',
+    bg: '#fffbeb',
+    icon: 'folder',
+  },
+};
 
 function timeAgo(iso: string) {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -85,6 +113,10 @@ export default function ClassLessonsScreen() {
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [taskPickerWeek, setTaskPickerWeek] = useState<number | null>(null);
+  const [taskPickerResourceId, setTaskPickerResourceId] = useState<string | null>(null);
+  const [attachedTasksByResource, setAttachedTasksByResource] = useState<
+    Record<string, LessonTaskKind[]>
+  >({});
   const [viewing, setViewing] = useState<{ resource: LessonResource; startIndex: number } | null>(
     null,
   );
@@ -148,10 +180,7 @@ export default function ClassLessonsScreen() {
     );
   };
 
-  const handleActivityTap = (
-    kind: 'quiz' | 'assignment' | 'project',
-    targetWeek?: number | null,
-  ) => {
+  const handleActivityTap = (kind: LessonTaskKind, targetWeek?: number | null) => {
     const weekForTask = targetWeek ?? selectedWeek;
     if (!weekForTask) {
       showFlash('Select a week first.');
@@ -170,6 +199,26 @@ export default function ClassLessonsScreen() {
       return;
     }
     showFlash(kind === 'quiz' ? 'Quizzes & games are coming soon.' : 'Projects are coming soon.');
+  };
+
+  const attachTaskToResource = (resourceId: string, kind: LessonTaskKind) => {
+    setAttachedTasksByResource((prev) => ({
+      ...prev,
+      [resourceId]: [...(prev[resourceId] ?? []), kind],
+    }));
+  };
+
+  const removeAttachedTaskFromResource = (resourceId: string, taskIndex: number) => {
+    setAttachedTasksByResource((prev) => {
+      const current = prev[resourceId] ?? [];
+      if (!current[taskIndex]) return prev;
+      const nextTasks = current.filter((_, i) => i !== taskIndex);
+      if (nextTasks.length === 0) {
+        const { [resourceId]: _removed, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [resourceId]: nextTasks };
+    });
   };
 
   if (profile?.role === 'student') {
@@ -267,10 +316,13 @@ export default function ClassLessonsScreen() {
                 onSearchChange={setSearch}
                 onBrowseFiles={handleBrowseFiles}
                 uploading={uploadFile.isPending}
-                onAddTaskPress={(week) => {
+                onAddTaskPress={(resourceId, week) => {
+                  setTaskPickerResourceId(resourceId);
                   setTaskPickerWeek(week);
                   setTaskPickerOpen(true);
                 }}
+                attachedTasksByResource={attachedTasksByResource}
+                onRemoveAttachedTask={removeAttachedTaskFromResource}
                 onToggleLiveSession={(resource, live) =>
                   setLiveSession.mutate({ resourceId: resource.id, live }, {
                     onSuccess: () => showFlash(live ? `${resource.title} is now live.` : `${resource.title} is no longer live.`),
@@ -347,11 +399,14 @@ export default function ClassLessonsScreen() {
           onClose={() => {
             setTaskPickerOpen(false);
             setTaskPickerWeek(null);
+            setTaskPickerResourceId(null);
           }}
           onActivityTap={(kind) => {
             handleActivityTap(kind, taskPickerWeek ?? selectedWeek);
+            if (taskPickerResourceId) attachTaskToResource(taskPickerResourceId, kind);
             setTaskPickerOpen(false);
             setTaskPickerWeek(null);
+            setTaskPickerResourceId(null);
           }}
         />
       )}
@@ -417,7 +472,9 @@ interface LessonsSectionProps {
   onSearchChange: (v: string) => void;
   onBrowseFiles: (week: number) => void;
   uploading: boolean;
-  onAddTaskPress: (week: number) => void;
+  onAddTaskPress: (resourceId: string, week: number) => void;
+  attachedTasksByResource: Record<string, LessonTaskKind[]>;
+  onRemoveAttachedTask: (resourceId: string, taskIndex: number) => void;
   onToggleLiveSession: (resource: LessonResource, live: boolean) => void;
   onViewProgress: (resource: LessonResource) => void;
   fileActions: FileActions;
@@ -434,6 +491,8 @@ function LessonsSection({
   onBrowseFiles,
   uploading,
   onAddTaskPress,
+  attachedTasksByResource,
+  onRemoveAttachedTask,
   onToggleLiveSession,
   onViewProgress,
   fileActions,
@@ -472,6 +531,8 @@ function LessonsSection({
           onBrowseFiles={() => onBrowseFiles(selectedWeek)}
           uploading={uploading}
           onAddTaskPress={onAddTaskPress}
+          attachedTasksByResource={attachedTasksByResource}
+          onRemoveAttachedTask={onRemoveAttachedTask}
           onToggleLiveSession={onToggleLiveSession}
           onViewProgress={onViewProgress}
           fileActions={fileActions}
@@ -502,6 +563,8 @@ function OpenWeekView({
   onBrowseFiles,
   uploading,
   onAddTaskPress,
+  attachedTasksByResource,
+  onRemoveAttachedTask,
   onToggleLiveSession,
   onViewProgress,
   fileActions,
@@ -513,7 +576,9 @@ function OpenWeekView({
   onSelectWeek: (week: number) => void;
   onBrowseFiles: () => void;
   uploading: boolean;
-  onAddTaskPress: (week: number) => void;
+  onAddTaskPress: (resourceId: string, week: number) => void;
+  attachedTasksByResource: Record<string, LessonTaskKind[]>;
+  onRemoveAttachedTask: (resourceId: string, taskIndex: number) => void;
   onToggleLiveSession: (resource: LessonResource, live: boolean) => void;
   onViewProgress: (resource: LessonResource) => void;
   fileActions: FileActions;
@@ -542,7 +607,9 @@ function OpenWeekView({
               <SlideThumbnailGroup
                 key={lesson.id}
                 resource={lesson}
-                onAddTaskPress={() => onAddTaskPress(lesson.week_number)}
+                attachedTasks={attachedTasksByResource[lesson.id] ?? []}
+                onRemoveAttachedTask={(taskIndex) => onRemoveAttachedTask(lesson.id, taskIndex)}
+                onAddTaskPress={() => onAddTaskPress(lesson.id, lesson.week_number)}
                 onToggleLiveSession={onToggleLiveSession}
                 onViewProgress={onViewProgress}
                 actions={fileActions}
@@ -551,7 +618,7 @@ function OpenWeekView({
               <FileCard
                 key={lesson.id}
                 resource={lesson}
-                onAddTaskPress={() => onAddTaskPress(lesson.week_number)}
+                onAddTaskPress={() => onAddTaskPress(lesson.id, lesson.week_number)}
                 actions={fileActions}
               />
             ),
@@ -665,19 +732,30 @@ function OtherWeeksStrip({
 
 function SlideThumbnailGroup({
   resource,
+  attachedTasks,
+  onRemoveAttachedTask,
   onAddTaskPress,
   onToggleLiveSession,
   onViewProgress,
   actions,
 }: {
   resource: LessonResource;
+  attachedTasks: LessonTaskKind[];
+  onRemoveAttachedTask: (taskIndex: number) => void;
   onAddTaskPress: () => void;
   onToggleLiveSession: (resource: LessonResource, live: boolean) => void;
   onViewProgress: (resource: LessonResource) => void;
   actions: FileActions;
 }) {
-  const { data: slides, isLoading, updateSlidesPacing, addBlankSlide, appendSlidesFromFile } =
-    useLessonSlides(resource.id);
+  const {
+    data: slides,
+    isLoading,
+    updateSlidesPacing,
+    addBlankSlide,
+    appendSlidesFromFile,
+    moveSlide,
+    deleteSlide,
+  } = useLessonSlides(resource.id);
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState(resource.title);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -745,6 +823,32 @@ function SlideThumbnailGroup({
           }),
       },
     ]);
+  };
+
+  const handleDeleteSlide = (id: string, storagePath: string | null) => {
+    Alert.alert('Delete slide?', 'This will permanently remove this slide.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () =>
+          deleteSlide.mutate(
+            { id, storagePath },
+            {
+              onError: (error) => Alert.alert('Could not delete slide', error.message),
+            },
+          ),
+      },
+    ]);
+  };
+
+  const handleMoveSlide = (fromIndex: number, toIndex: number) => {
+    moveSlide.mutate(
+      { fromIndex, toIndex },
+      {
+        onError: (error) => Alert.alert('Could not move slide', error.message),
+      },
+    );
   };
 
   if (converting || failed) {
@@ -873,79 +977,21 @@ function SlideThumbnailGroup({
           const isTeacherPaced = slide.pacing_mode === 'teacher_paced';
           const isSelected = selectedIds.has(slide.id);
           return (
-            <Pressable
+            <DraggableSlideCard
               key={slide.id}
-              onPress={() =>
-                selectionMode ? toggleSelected(slide.id) : actions.onOpen(resource, i)
-              }
-              accessibilityLabel={
-                selectionMode
-                  ? `${isSelected ? 'Deselect' : 'Select'} slide ${i + 1}`
-                  : `Open slide ${i + 1}`
-              }
-              style={{ width: 124 }}
-              className="gap-1"
-            >
-              <View
-                style={{
-                  height: 90,
-                  backgroundColor: tag ? `${tag.color}1f` : 'rgba(0,0,0,0.04)',
-                  borderColor: isSelected
-                    ? '#7c3aed'
-                    : tag
-                      ? `${tag.color}55`
-                      : 'rgba(0,0,0,0.1)',
-                  borderWidth: isSelected ? 2 : 1,
-                }}
-                className="items-center justify-center overflow-hidden rounded-lg border"
-              >
-                {slide.url ? (
-                  <Image
-                    source={{ uri: slide.url }}
-                    style={{ width: '100%', height: '100%' }}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <ActivityIndicator size="small" />
-                )}
-
-                {isTeacherPaced && (
-                  <View
-                    className="absolute left-1 top-1 h-4 w-4 items-center justify-center rounded-full bg-black/60"
-                    accessibilityLabel="Teacher-paced"
-                  >
-                    <Feather name="lock" size={9} color="#fff" />
-                  </View>
-                )}
-
-                {selectionMode && (
-                  <View
-                    className={`absolute right-1 top-1 h-5 w-5 items-center justify-center rounded-full ${
-                      isSelected ? 'bg-violet-600' : 'bg-white/80'
-                    }`}
-                    style={!isSelected ? { borderWidth: 1.5, borderColor: '#c4b5fd' } : undefined}
-                  >
-                    {isSelected && <Text className="text-xs font-bold text-white">✓</Text>}
-                  </View>
-                )}
-              </View>
-              <Text className="text-center text-[10px] font-medium text-ink/50">Slide {i + 1}</Text>
-              {tag && (
-                <Text
-                  style={{ color: tag.color }}
-                  className="text-center text-[9px] font-semibold"
-                  numberOfLines={1}
-                >
-                  {tag.label}
-                </Text>
-              )}
-              {Boolean(slide.duration_minutes) && (
-                <View className="flex-row items-center justify-center gap-1">
-                  <Feather name="clock" size={9} color="#9ca3af" />
-                  <Text className="text-[9px] text-ink/40">{slide.duration_minutes}m</Text>
-                </View>
-              )}
-            </Pressable>
+              slide={slide}
+              index={i}
+              total={slides?.length ?? 0}
+              tag={tag}
+              isTeacherPaced={isTeacherPaced}
+              isSelected={isSelected}
+              selectionMode={selectionMode}
+              disabled={moveSlide.isPending || deleteSlide.isPending}
+              onOpen={() => actions.onOpen(resource, i)}
+              onToggleSelected={() => toggleSelected(slide.id)}
+              onMove={handleMoveSlide}
+              onDelete={() => handleDeleteSlide(slide.id, slide.storage_path)}
+            />
           );
         })}
 
@@ -978,6 +1024,42 @@ function SlideThumbnailGroup({
           </View>
           <Text className="text-center text-[10px] font-medium text-ink/45">After Slide {slides?.length ?? 0}</Text>
         </Pressable>
+
+        {attachedTasks.map((task, i) => {
+          const meta = LESSON_TASK_META[task];
+          return (
+            <View key={`${resource.id}-task-${task}-${i}`} style={{ width: 124 }} className="gap-1">
+              <View
+                style={{
+                  height: 90,
+                  borderColor: `${meta.color}66`,
+                  backgroundColor: meta.bg,
+                  borderWidth: 1,
+                }}
+                className="items-center justify-center rounded-lg"
+              >
+                <View
+                  style={{ backgroundColor: meta.color }}
+                  className="h-7 w-7 items-center justify-center rounded-full"
+                >
+                  <Feather name={meta.icon} size={12} color="#fff" />
+                </View>
+                <Text style={{ color: meta.color }} className="mt-1 text-[10px] font-semibold">
+                  {meta.shortLabel}
+                </Text>
+                <Text className="text-[9px] text-ink/45">Task attached</Text>
+                <Pressable
+                  onPress={() => onRemoveAttachedTask(i)}
+                  className="absolute right-1 top-1 h-5 w-5 items-center justify-center rounded-full bg-white/90"
+                  accessibilityLabel="Delete task"
+                >
+                  <Feather name="x" size={10} color="#6b7280" />
+                </Pressable>
+              </View>
+              <Text className="text-center text-[10px] font-medium text-ink/45">After Slide {(slides?.length ?? 0) + i + 1}</Text>
+            </View>
+          );
+        })}
       </View>
 
       <View className="mt-1 flex-row justify-end">
@@ -1120,6 +1202,166 @@ function FileCard({
         </Pressable>
       </View>
     </View>
+  );
+}
+
+function DraggableSlideCard({
+  slide,
+  index,
+  total,
+  tag,
+  isTeacherPaced,
+  isSelected,
+  selectionMode,
+  disabled,
+  onOpen,
+  onToggleSelected,
+  onMove,
+  onDelete,
+}: {
+  slide: { id: string; url: string | null; duration_minutes: number | null };
+  index: number;
+  total: number;
+  tag: { label: string; color: string } | null;
+  isTeacherPaced: boolean;
+  isSelected: boolean;
+  selectionMode: boolean;
+  disabled: boolean;
+  onOpen: () => void;
+  onToggleSelected: () => void;
+  onMove: (fromIndex: number, toIndex: number) => void;
+  onDelete: () => void;
+}) {
+  const pan = useState(() => new Animated.ValueXY())[0];
+  const [dragging, setDragging] = useState(false);
+  const tilePitch = 136; // card width (124) + gap (12)
+
+  const reset = useCallback(() => {
+    Animated.spring(pan, {
+      toValue: { x: 0, y: 0 },
+      useNativeDriver: false,
+      bounciness: 6,
+    }).start(() => setDragging(false));
+  }, [pan]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_evt, gestureState) =>
+          !selectionMode && !disabled && (Math.abs(gestureState.dx) > 6 || Math.abs(gestureState.dy) > 6),
+        onPanResponderGrant: () => {
+          setDragging(true);
+          pan.extractOffset();
+        },
+        onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
+          useNativeDriver: false,
+        }),
+        onPanResponderRelease: (_evt, gestureState) => {
+          pan.flattenOffset();
+          const shift = Math.round(gestureState.dx / tilePitch);
+          const toIndex = Math.max(0, Math.min(total - 1, index + shift));
+          const fromIndex = index;
+          reset();
+          if (toIndex !== fromIndex) onMove(fromIndex, toIndex);
+        },
+        onPanResponderTerminate: () => {
+          pan.flattenOffset();
+          reset();
+        },
+      }),
+    [disabled, index, onMove, pan, reset, selectionMode, total],
+  );
+
+  return (
+    <Animated.View
+      {...(!selectionMode && !disabled ? panResponder.panHandlers : {})}
+      style={{ width: 124, transform: [{ translateX: pan.x }, { translateY: pan.y }] }}
+      className="gap-1"
+    >
+      <Pressable
+        onPress={() => (selectionMode ? onToggleSelected() : onOpen())}
+        accessibilityLabel={selectionMode ? `${isSelected ? 'Deselect' : 'Select'} slide ${index + 1}` : `Open slide ${index + 1}`}
+      >
+        <View
+          style={{
+            height: 90,
+            backgroundColor: tag ? `${tag.color}1f` : 'rgba(0,0,0,0.04)',
+            borderColor: isSelected ? '#7c3aed' : tag ? `${tag.color}55` : 'rgba(0,0,0,0.1)',
+            borderWidth: isSelected ? 2 : 1,
+          }}
+          className="items-center justify-center overflow-hidden rounded-lg border"
+        >
+          {slide.url ? (
+            <Image source={{ uri: slide.url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          ) : (
+            <ActivityIndicator size="small" />
+          )}
+
+          {isTeacherPaced && (
+            <View className="absolute left-1 top-1 h-4 w-4 items-center justify-center rounded-full bg-black/60">
+              <Feather name="lock" size={9} color="#fff" />
+            </View>
+          )}
+
+          {selectionMode ? (
+            <View
+              className={`absolute right-1 top-1 h-5 w-5 items-center justify-center rounded-full ${
+                isSelected ? 'bg-violet-600' : 'bg-white/80'
+              }`}
+              style={!isSelected ? { borderWidth: 1.5, borderColor: '#c4b5fd' } : undefined}
+            >
+              {isSelected && <Text className="text-xs font-bold text-white">✓</Text>}
+            </View>
+          ) : null}
+        </View>
+      </Pressable>
+
+      <Text className="text-center text-[10px] font-medium text-ink/50">Slide {index + 1}</Text>
+      {tag && (
+        <Text style={{ color: tag.color }} className="text-center text-[9px] font-semibold" numberOfLines={1}>
+          {tag.label}
+        </Text>
+      )}
+      {Boolean(slide.duration_minutes) && (
+        <View className="flex-row items-center justify-center gap-1">
+          <Feather name="clock" size={9} color="#9ca3af" />
+          <Text className="text-[9px] text-ink/40">{slide.duration_minutes}m</Text>
+        </View>
+      )}
+      {!selectionMode && (
+        <View className="flex-row items-center justify-center gap-1">
+          <Pressable
+            onPress={() => onMove(index, Math.max(0, index - 1))}
+            disabled={disabled || index === 0}
+            className="h-5 w-5 items-center justify-center rounded-full bg-black/5"
+            style={{ opacity: disabled || index === 0 ? 0.35 : 1 }}
+            accessibilityLabel="Move slide left"
+          >
+            <Feather name="chevron-left" size={10} color="#4b5563" />
+          </Pressable>
+          <Pressable
+            onPress={() => onMove(index, Math.min(total - 1, index + 1))}
+            disabled={disabled || index >= total - 1}
+            className="h-5 w-5 items-center justify-center rounded-full bg-black/5"
+            style={{ opacity: disabled || index >= total - 1 ? 0.35 : 1 }}
+            accessibilityLabel="Move slide right"
+          >
+            <Feather name="chevron-right" size={10} color="#4b5563" />
+          </Pressable>
+          <Pressable
+            onPress={onDelete}
+            disabled={disabled}
+            className="h-5 w-5 items-center justify-center rounded-full bg-red-50"
+            style={{ opacity: disabled ? 0.35 : 1 }}
+            accessibilityLabel="Delete slide"
+          >
+            <Feather name="trash-2" size={10} color="#ef4444" />
+          </Pressable>
+        </View>
+      )}
+      {!selectionMode && <Text className="text-center text-[8px] text-ink/35">Drag to reorder</Text>}
+      {dragging && <Text className="text-center text-[8px] text-violet-700">Release to place</Text>}
+    </Animated.View>
   );
 }
 
