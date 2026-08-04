@@ -19,7 +19,7 @@ export default function StudentLayout() {
 
   if (!session) return <Redirect href="/(auth)/sign-in" />;
   if (profile?.role === 'teacher' || profile?.role === 'admin') {
-    return <Redirect href="/(teacher)/dashboard" />;
+    return <Redirect href="/classes" />;
   }
 
   return (

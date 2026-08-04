@@ -33,6 +33,7 @@ export default function StudentHomeScreen() {
   const [joinCode, setJoinCode] = useState('');
   const [joinError, setJoinError] = useState<string | null>(null);
   const [isJoining, setIsJoining] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handleJoin = async () => {
     if (!studentId || !joinCode.trim()) return;
@@ -50,7 +51,12 @@ export default function StudentHomeScreen() {
     }
   };
 
-  const classes = dashboard.data?.classes ?? [];
+  const allClasses = useMemo(() => dashboard.data?.classes ?? [], [dashboard.data]);
+  const classes = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return allClasses;
+    return allClasses.filter((c) => c.name.toLowerCase().includes(q));
+  }, [allClasses, searchQuery]);
   const dueSoon = dashboard.data?.dueSoon ?? [];
   const badges = dashboard.data?.badges ?? [];
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
@@ -64,7 +70,9 @@ export default function StudentHomeScreen() {
             <View className="max-w-[320px] flex-1 flex-row items-center gap-2" style={{ minWidth: 220 }}>
               <Feather name="search" size={15} color="#9C968B" />
               <TextInput
-                placeholder="Search classes, assignments, files…"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search your classes…"
                 placeholderTextColor="#9C968B"
                 className="flex-1 font-desk-sans text-[13.5px] text-desk-body"
               />
@@ -99,17 +107,17 @@ export default function StudentHomeScreen() {
                   Hi, {firstName}.
                 </Text>
                 <Text className="mt-1.5 max-w-[52ch] font-desk-sans text-[14.5px] leading-[1.5] text-desk-body2">
-                  {classes.length === 0
+                  {allClasses.length === 0
                     ? 'Join a class below to see it on your desk.'
                     : dueSoon.length > 0
-                      ? `${classes.length} ${classes.length === 1 ? 'class' : 'classes'} on your desk, ${dueSoon.length} ${dueSoon.length === 1 ? 'task' : 'tasks'} still open.`
-                      : `${classes.length} ${classes.length === 1 ? 'class' : 'classes'} on your desk — you're all caught up.`}
+                      ? `${allClasses.length} ${allClasses.length === 1 ? 'class' : 'classes'} on your desk, ${dueSoon.length} ${dueSoon.length === 1 ? 'task' : 'tasks'} still open.`
+                      : `${allClasses.length} ${allClasses.length === 1 ? 'class' : 'classes'} on your desk — you're all caught up.`}
                 </Text>
               </View>
               <View className="flex-row gap-2.5">
                 <View className="min-w-[92px] rounded border border-desk-indigoTintBorder bg-desk-indigoTint px-4 py-2.5">
                   <Text className="font-poppins-semibold text-[26px] leading-none text-desk-indigo">
-                    {classes.length}
+                    {allClasses.length}
                   </Text>
                   <Text className="mt-1 text-[11.5px] text-desk-indigo">classes</Text>
                 </View>
@@ -207,7 +215,9 @@ export default function StudentHomeScreen() {
               {dashboard.isLoading && <ActivityIndicator style={{ marginTop: 16 }} />}
               {!dashboard.isLoading && classes.length === 0 && (
                 <Text className="mt-3 font-desk-sans text-sm text-desk-muted3">
-                  Join a class above to see it here.
+                  {allClasses.length === 0
+                    ? 'Join a class above to see it here.'
+                    : `No classes match "${searchQuery.trim()}".`}
                 </Text>
               )}
               {classes.map((c, i) => (
