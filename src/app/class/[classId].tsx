@@ -185,7 +185,6 @@ export default function ClassLessonsScreen() {
   }
 
   const classRow = classQuery.data;
-  const activeLiveResource = resources.find((resource) => resource.is_live_session) ?? null;
   const breadcrumb = [
     classRow.grade,
     classRow.section?.length ? `Section ${classRow.section.join(', ')}` : null,
@@ -229,17 +228,6 @@ export default function ClassLessonsScreen() {
         <View className="flex-row items-center justify-between border-b border-black/5 bg-white px-6 py-4">
           <Text className="text-lg font-semibold text-ink">{breadcrumb || classRow.name}</Text>
           <View className="flex-row items-center gap-2.5">
-            <Pressable
-              onPress={() =>
-                activeLiveResource
-                  ? router.push(`/class-progress/${classId}?resourceId=${activeLiveResource.id}`)
-                  : showFlash('Choose a live lesson first.')
-              }
-              className="flex-row items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5"
-            >
-              <Feather name="activity" size={15} color="#047857" />
-              <Text className="text-sm font-semibold text-emerald-700">See Student Progress</Text>
-            </Pressable>
             <ToolbarButton
               icon="calendar"
               label="Calendar View"
