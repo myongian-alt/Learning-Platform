@@ -123,8 +123,10 @@ export function SlideObjectsLayer({
 
   return (
     <Pressable
-      style={StyleSheet.absoluteFill}
-      pointerEvents={containerPointerEvents}
+      style={{
+        ...StyleSheet.absoluteFillObject,
+        pointerEvents: containerPointerEvents,
+      }}
       onPress={(e) => {
         if (pending) {
           // React Native Web's Pressable passes the raw DOM MouseEvent through as

@@ -173,7 +173,12 @@ export const SlideCanvas = forwardRef<SlideCanvasHandle, SlideCanvasProps>(funct
   // while actually drawing/erasing.
   return (
     <GestureDetector gesture={gesture}>
-      <Canvas style={StyleSheet.absoluteFill} pointerEvents={tool === 'select' ? 'none' : 'auto'}>
+      <Canvas
+        style={{
+          ...StyleSheet.absoluteFillObject,
+          pointerEvents: tool === 'select' ? 'none' : 'auto',
+        }}
+      >
         {skPaths.map(({ stroke, path }) => (
           <Path
             key={stroke.id}
