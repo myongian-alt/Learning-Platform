@@ -1,6 +1,5 @@
 -- Penbook initial schema
 -- Maps the product feature set onto Postgres tables with RLS.
--- Run via `supabase db push` (CLI) or the Supabase MCP `apply_migration` tool.
 
 create extension if not exists "pgcrypto";
 create extension if not exists "vector";
@@ -73,7 +72,7 @@ create table assignments (
   due_at timestamptz,
   standards text[] not null default '{}',
   status assignment_status not null default 'draft',
-  current_page_id uuid, -- set when delivery_mode = teacher_paced, drives "bring whole class to this slide"
+  current_page_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -109,8 +108,8 @@ create table questions (
   position integer not null,
   type question_type not null,
   prompt text not null,
-  options jsonb not null default '{}',       -- choices, drag/drop pairs, matching pairs, etc.
-  correct_answer jsonb,                       -- null for ungraded/open-ended types
+  options jsonb not null default '{}',
+  correct_answer jsonb,
   points numeric not null default 1,
   created_at timestamptz not null default now(),
   unique (page_id, position)
@@ -155,13 +154,13 @@ create type stroke_author_role as enum ('student', 'teacher');
 create table canvas_strokes (
   id uuid primary key default gen_random_uuid(),
   page_id uuid not null references assignment_pages (id) on delete cascade,
-  submission_id uuid references submissions (id) on delete cascade, -- null for teacher-only master annotations
+  submission_id uuid references submissions (id) on delete cascade,
   author_id uuid not null references profiles (id) on delete cascade,
   author_role stroke_author_role not null,
-  tool text not null,           -- pen | highlighter | eraser | text | sticker | pointer
+  tool text not null,
   color text,
   stroke_width numeric,
-  points jsonb not null,        -- [{x,y,pressure?}, ...] in canvas space
+  points jsonb not null,
   created_at timestamptz not null default now()
 );
 
@@ -206,8 +205,8 @@ create table library_items (
   description text,
   is_public boolean not null default false,
   standards text[] not null default '{}',
-  content jsonb not null default '{}', -- serialized pages/questions, cloned into an assignment on import
-  embedding vector(1536),               -- pgvector, for semantic/adaptive search (requires `vector` extension)
+  content jsonb not null default '{}',
+  embedding vector(1536),
   created_at timestamptz not null default now()
 );
 
@@ -405,3 +404,4 @@ create policy "leaderboard_teacher_read" on leaderboard_entries for select using
 
 -- lms connections: teacher-managed only.
 create policy "lms_connections_teacher_all" on lms_connections for all using (is_class_teacher(class_id));
+;

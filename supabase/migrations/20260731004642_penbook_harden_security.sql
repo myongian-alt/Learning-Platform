@@ -151,3 +151,4 @@ drop function if exists public.assignment_class_id(uuid);
 drop function if exists public.page_assignment_id(uuid);
 
 create policy "organizations_signed_in_read" on organizations for select using (auth.uid() is not null);
+;

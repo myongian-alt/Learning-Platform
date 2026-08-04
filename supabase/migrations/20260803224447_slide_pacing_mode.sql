@@ -6,3 +6,4 @@ create type slide_pacing_mode as enum ('teacher_paced', 'student_paced');
 
 alter table lesson_slides
   add column if not exists pacing_mode slide_pacing_mode not null default 'student_paced';
+;

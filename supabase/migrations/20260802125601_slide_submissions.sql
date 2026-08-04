@@ -70,3 +70,4 @@ create policy "slide_submissions_student_update" on slide_submissions for update
         and private.is_class_member(r.class_id)
     )
   );
+;

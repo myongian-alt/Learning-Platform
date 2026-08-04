@@ -31,11 +31,11 @@ function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
 // physical drawing at a different magnification, rather than leaving them pinned at
 // whatever pixel position they happened to be drawn at.
 function strokeToPath(stroke: SlideStroke, zoom: number): SkPath {
-  const path = Skia.Path.Make();
+  const path = Skia.PathBuilder.Make();
   stroke.points.forEach((p, i) =>
     i === 0 ? path.moveTo(p.x * zoom, p.y * zoom) : path.lineTo(p.x * zoom, p.y * zoom),
   );
-  return path;
+  return path.detach();
 }
 
 export interface SlideCanvasHandle {
@@ -63,7 +63,7 @@ export const SlideCanvas = forwardRef<SlideCanvasHandle, SlideCanvasProps>(funct
   const [strokes, setStrokes] = useState<SlideStroke[]>(initialStrokes);
   const [, bumpRedraw] = useState(0);
   const redoStack = useRef<SlideStroke[][]>([]);
-  const activePath = useRef<SkPath | null>(null);
+  const activePath = useRef<ReturnType<typeof Skia.PathBuilder.Make> | null>(null);
   const activePoints = useRef<{ x: number; y: number }[]>([]);
   const erasedIds = useRef<Set<string>>(new Set());
 
@@ -82,7 +82,7 @@ export const SlideCanvas = forwardRef<SlideCanvasHandle, SlideCanvasProps>(funct
     // The live in-progress path is built from raw (already-zoomed) gesture coordinates —
     // it's drawn directly at the canvas's current pixel size, no scaling needed. Only the
     // *stored* points (below) are converted to zoom-independent base coordinates.
-    const path = Skia.Path.Make();
+    const path = Skia.PathBuilder.Make();
     path.moveTo(x, y);
     activePath.current = path;
     activePoints.current = [{ x: x / zoom, y: y / zoom }];
@@ -193,7 +193,7 @@ export const SlideCanvas = forwardRef<SlideCanvasHandle, SlideCanvasProps>(funct
         ))}
         {activePath.current && (
           <Path
-            path={activePath.current}
+            path={activePath.current.build()}
             color={color}
             style="stroke"
             strokeWidth={strokeWidth * zoom}

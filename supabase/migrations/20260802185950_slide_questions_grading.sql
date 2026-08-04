@@ -11,3 +11,4 @@ alter table slide_submissions
 
 alter table slide_submissions
   add constraint slide_submissions_grade_range check (grade is null or (grade >= 0 and grade <= 100));
+;
