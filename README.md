@@ -34,8 +34,8 @@ up a backend.
 1. Create a Supabase project (via the [dashboard](https://supabase.com/dashboard)
    or the Supabase MCP tools if you're driving this from an agent).
 2. Apply the migrations in [`supabase/migrations/`](./supabase/migrations) in order
-   (`0001_init.sql` is the base schema; `0002`+ are incremental fixes and features —
-   see each file's header comment for what it does and why):
+  (the earliest timestamped migration is the base schema; later files are incremental
+  fixes and features — see each file's header comment for what it does and why):
    ```bash
    npx supabase link --project-ref <your-project-ref>
    npx supabase db push
