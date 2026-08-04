@@ -32,6 +32,7 @@ import {
 } from '@/hooks/queries/use-lesson-slides';
 import {
   useLiveClassSessions,
+  useStudentLessonPresence,
   useTeacherLivePresence,
   type LiveSlidePayload,
 } from '@/hooks/queries/use-live-class-session';
@@ -128,6 +129,18 @@ export function SlideViewerModal({
     navLocked && live && total > 0 ? Math.min(live.slideIndex, total - 1) : index;
   const slide = slides?.[effectiveIndex];
 
+  const lessonPresence = useStudentLessonPresence({
+    viewerRole,
+    classId: resource.class_id,
+    resourceId: resource.id,
+    slideId: slide?.id ?? null,
+    slideIndex: slide ? effectiveIndex : null,
+    pacingMode: slide?.pacing_mode ?? null,
+    followingTeacher: following,
+    submissionsEnabled: slide?.submissions_enabled ?? false,
+    studentId: studentId ?? null,
+  });
+
   const teacherLivePayload: LiveSlidePayload | null =
     isTeacher && slide
       ? {
@@ -165,6 +178,7 @@ export function SlideViewerModal({
         onToggleFollowing={() => setFollowing((f) => !f)}
         navLocked={navLocked}
         forcedLock={forcedLock}
+        onStudentActivity={lessonPresence.markActivity}
       />
     </View>
   );
@@ -189,6 +203,7 @@ function SlideStage({
   onToggleFollowing,
   navLocked,
   forcedLock,
+  onStudentActivity,
 }: {
   resource: LessonResource;
   slide: ViewableSlide | null;
@@ -208,6 +223,7 @@ function SlideStage({
   onToggleFollowing: () => void;
   navLocked: boolean;
   forcedLock: boolean;
+  onStudentActivity: (eventType: string) => void;
 }) {
   const isTeacher = viewerRole === 'teacher';
   const tag = slide?.activity_tag ? SLIDE_TAGS[slide.activity_tag] : null;
@@ -292,6 +308,7 @@ function SlideStage({
     if (isTeacher) {
       saveAnnotations.mutate({ id: slide.id, annotations: strokes });
     } else {
+      onStudentActivity('drawing');
       mySubmission.saveAnnotations.mutate(strokes);
     }
   };
@@ -305,6 +322,7 @@ function SlideStage({
     if (isTeacher) {
       saveObjects.mutate({ id: slide.id, objects });
     } else {
+      onStudentActivity('annotating');
       mySubmission.saveObjects.mutate(objects);
     }
   };
@@ -322,6 +340,7 @@ function SlideStage({
   const handleAnswerChange = (questionId: string, value: string | number) => {
     const next = { ...myAnswers, [questionId]: value };
     setMyAnswers(next);
+    onStudentActivity('answering');
     mySubmission.saveAnswers.mutate(next);
   };
 
@@ -467,7 +486,10 @@ function SlideStage({
 
   const studentSubmitButton = !isTeacher && slide?.submissions_enabled && (
     <Pressable
-      onPress={() => mySubmission.setSubmitted.mutate(!isSubmitted)}
+      onPress={() => {
+        onStudentActivity('submitted');
+        mySubmission.setSubmitted.mutate(!isSubmitted);
+      }}
       className={`flex-row items-center gap-1.5 rounded-full px-3 py-1.5 ${
         isSubmitted ? 'bg-emerald-600' : 'bg-violet-600'
       }`}
@@ -524,7 +546,12 @@ function SlideStage({
           </Text>
         </Pressable>
         <Pressable
-          onPress={() => !following && onToggleFollowing()}
+          onPress={() => {
+            if (!following) {
+              onStudentActivity('following');
+              onToggleFollowing();
+            }
+          }}
           className="rounded-full px-2.5 py-1"
           style={{ backgroundColor: following ? '#7C3AED' : 'transparent' }}
         >

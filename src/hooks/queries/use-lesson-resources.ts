@@ -59,16 +59,17 @@ async function convertToSlides(resource: {
   }
 }
 
-export function useLessonResources(classId: string) {
+export function useLessonResources(classId: string | null) {
   const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: ['lesson-resources', classId],
+    enabled: Boolean(classId),
     queryFn: async (): Promise<LessonResource[]> => {
       const { data, error } = await supabase
         .from('lesson_resources')
         .select('*')
-        .eq('class_id', classId)
+        .eq('class_id', classId!)
         .order('week_number', { ascending: true })
         .order('created_at', { ascending: true });
       if (error) throw error;
@@ -102,7 +103,7 @@ export function useLessonResources(classId: string) {
       const response = await fetch(input.uri);
       const blob = await response.blob();
       const fileType = inferFileType(input.mimeType);
-      const path = `${classId}/${input.weekNumber}/${input.weekNumber}-${Date.now()}-${input.filename}`;
+      const path = `${classId!}/${input.weekNumber}/${input.weekNumber}-${Date.now()}-${input.filename}`;
 
       await uploadImageBlob(path, blob, input.mimeType ?? 'application/octet-stream');
 
@@ -165,6 +166,17 @@ export function useLessonResources(classId: string) {
     onSuccess: invalidate,
   });
 
+  const setLiveSession = useMutation({
+    mutationFn: async (input: { resourceId: string; live: boolean }) => {
+      const { error } = await supabase.rpc('set_live_lesson_resource', {
+        target_resource_id: input.resourceId,
+        make_live: input.live,
+      });
+      if (error) throw error;
+    },
+    onSuccess: invalidate,
+  });
+
   const deleteFile = useMutation({
     mutationFn: async (resource: LessonResource) => {
       const { data: slides } = await supabase
@@ -194,6 +206,7 @@ export function useLessonResources(classId: string) {
     totalBytes,
     uploadFile,
     renameFile,
+    setLiveSession,
     deleteFile,
     retryConversion,
   };

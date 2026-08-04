@@ -5,7 +5,10 @@ import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
 import type { ClassRow } from '@/types/database';
 
-export type ClassWithMemberCount = ClassRow & { class_members: { count: number }[] };
+export type ClassWithMemberCount = ClassRow & {
+  class_members: { count: number }[];
+  lesson_resources?: { id: string; title: string; is_live_session: boolean }[];
+};
 
 export function useTeacherClasses() {
   const teacherId = useAuthStore((s) => s.session?.user.id);
@@ -17,7 +20,7 @@ export function useTeacherClasses() {
     queryFn: async (): Promise<ClassWithMemberCount[]> => {
       const { data, error } = await supabase
         .from('classes')
-        .select('*, class_members(count)')
+        .select('*, class_members(count), lesson_resources(id, title, is_live_session)')
         .eq('teacher_id', teacherId!)
         .order('created_at', { ascending: false });
       if (error) throw error;

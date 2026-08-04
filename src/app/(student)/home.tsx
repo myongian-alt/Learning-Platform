@@ -199,7 +199,7 @@ export default function StudentHomeScreen() {
                     Slide {live.slideIndex + 1} of {live.totalSlides}
                     {live.submissionsEnabled ? ' · Submissions open' : ''}
                   </Text>
-                  <Text className="font-desk-sans-semibold text-[13px] text-desk-indigo">Join →</Text>
+                  <Text className="font-desk-sans-semibold text-[13px] text-desk-indigo">Join live lesson →</Text>
                 </Pressable>
               </Link>
             )}

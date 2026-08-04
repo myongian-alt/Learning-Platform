@@ -16,6 +16,7 @@ export default function TeacherDashboardScreen() {
   const publishedCount = assignments?.filter((a) => a.status === 'published').length ?? 0;
   const openHelpRequests =
     assignments?.reduce((sum, a) => sum + (a.help_requests?.[0]?.count ?? 0), 0) ?? 0;
+  const classes = classesQuery.data ?? [];
 
   return (
     <SafeAreaView className="flex-1 bg-paper">
@@ -36,6 +37,61 @@ export default function TeacherDashboardScreen() {
           <StatCard label="Classes" value={classesQuery.data?.length ?? 0} />
           <StatCard label="Published" value={publishedCount} />
           <StatCard label="Help requests" value={openHelpRequests} accent={openHelpRequests > 0} />
+        </View>
+
+        <View className="gap-3">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-base font-semibold text-ink">See students progress</Text>
+            {classes[0] && (
+              <Link href={`/class-progress/${classes[0].id}?demo=1`} className="text-sm text-brand-600">
+                30-student demo
+              </Link>
+            )}
+          </View>
+
+          {classes.slice(0, 4).map((classRow) => {
+            const liveResource = classRow.lesson_resources?.find((resource) => resource.is_live_session) ?? null;
+            return (
+            <View key={classRow.id} className="rounded-2xl bg-white p-4 shadow-sm">
+              <View className="flex-row items-start justify-between gap-4">
+                <View className="flex-1 gap-1">
+                  <Text className="text-base font-semibold text-ink">{classRow.name}</Text>
+                  <Text className="text-xs uppercase tracking-wide text-ink/40">
+                    {classRow.class_members?.[0]?.count ?? 0} students enrolled
+                  </Text>
+                  <Text className="text-xs text-ink/55">
+                    {liveResource ? `Live lesson: ${liveResource.title}` : 'No lesson is marked live yet.'}
+                  </Text>
+                </View>
+                <View className="flex-row gap-2">
+                  {liveResource ? (
+                    <Link href={`/class-progress/${classRow.id}?resourceId=${liveResource.id}`} asChild>
+                      <Pressable className="rounded-full bg-emerald-600 px-3 py-2">
+                        <Text className="text-xs font-semibold text-white">Open live monitor</Text>
+                      </Pressable>
+                    </Link>
+                  ) : (
+                    <Link href={`/class/${classRow.id}`} asChild>
+                      <Pressable className="rounded-full bg-emerald-600 px-3 py-2">
+                        <Text className="text-xs font-semibold text-white">Choose live lesson</Text>
+                      </Pressable>
+                    </Link>
+                  )}
+                  <Link href={`/class-progress/${classRow.id}?demo=1`} asChild>
+                    <Pressable className="rounded-full border border-ink/10 px-3 py-2">
+                      <Text className="text-xs font-semibold text-ink/70">Preview demo</Text>
+                    </Pressable>
+                  </Link>
+                </View>
+              </View>
+            </View>
+          )})}
+
+          {(classesQuery.data?.length ?? 0) === 0 && (
+            <Text className="text-sm text-ink/50">
+              Create a class first. The live progress monitor opens per class.
+            </Text>
+          )}
         </View>
 
         <View className="gap-3">

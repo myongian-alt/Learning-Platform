@@ -139,11 +139,19 @@ export function StudentClassView({ classId }: { classId: string }) {
                   className="flex-row items-center justify-between rounded-xl bg-white p-3.5 shadow-sm"
                 >
                   <View className="flex-1 gap-0.5">
-                    <Text className="text-sm font-semibold text-lf-ink" numberOfLines={1}>
-                      {resource.title}
-                    </Text>
+                    <View className="flex-row items-center gap-2">
+                      <Text className="flex-1 text-sm font-semibold text-lf-ink" numberOfLines={1}>
+                        {resource.title}
+                      </Text>
+                      {resource.is_live_session && (
+                        <View className="rounded-full bg-emerald-50 px-2 py-0.5">
+                          <Text className="text-[10px] font-bold uppercase text-emerald-700">Live</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text className="text-xs text-lf-muted">
                       {FILE_TYPE_LABEL[resource.file_type]}
+                      {resource.is_live_session && ' · Live session'}
                       {resource.conversion_status === 'pending' && ' · Preparing…'}
                     </Text>
                   </View>

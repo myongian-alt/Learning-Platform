@@ -11,6 +11,52 @@ export type SlideSubmissionWithStudent = SlideSubmission & {
   profiles: { full_name: string } | null;
 };
 
+export function useTeacherStudentSlideSubmission(slideId: string | null, studentId: string | null) {
+  const queryClient = useQueryClient();
+  const enabled = Boolean(slideId) && Boolean(studentId);
+  const queryKey = ['teacher-slide-submission', slideId, studentId];
+
+  const query = useQuery({
+    queryKey,
+    enabled,
+    queryFn: async (): Promise<SlideSubmission | null> => {
+      const { data, error } = await supabase
+        .from('slide_submissions')
+        .select('*')
+        .eq('slide_id', slideId!)
+        .eq('student_id', studentId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const saveTeacherAnnotations = useMutation({
+    mutationFn: async (annotations: SlideStroke[]) => {
+      const { error } = await supabase.rpc('upsert_teacher_slide_overlay', {
+        target_slide_id: slideId!,
+        target_student_id: studentId!,
+        next_teacher_annotations: annotations as never,
+      });
+      if (error) throw error;
+    },
+  });
+
+  const saveTeacherComment = useMutation({
+    mutationFn: async (comment: string) => {
+      const { error } = await supabase.rpc('upsert_teacher_slide_overlay', {
+        target_slide_id: slideId!,
+        target_student_id: studentId!,
+        next_teacher_comment: comment,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+  });
+
+  return { ...query, saveTeacherAnnotations, saveTeacherComment };
+}
+
 // Teacher-facing: every student's submission row for a slide, to show who has completed it.
 export function useSlideSubmissions(slideId: string | null) {
   const queryClient = useQueryClient();

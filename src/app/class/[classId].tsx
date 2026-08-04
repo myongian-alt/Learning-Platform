@@ -72,6 +72,7 @@ export default function ClassLessonsScreen() {
     totalBytes,
     uploadFile,
     renameFile,
+    setLiveSession,
     deleteFile,
     retryConversion,
   } = useLessonResources(classId);
@@ -184,6 +185,7 @@ export default function ClassLessonsScreen() {
   }
 
   const classRow = classQuery.data;
+  const activeLiveResource = resources.find((resource) => resource.is_live_session) ?? null;
   const breadcrumb = [
     classRow.grade,
     classRow.section?.length ? `Section ${classRow.section.join(', ')}` : null,
@@ -227,6 +229,17 @@ export default function ClassLessonsScreen() {
         <View className="flex-row items-center justify-between border-b border-black/5 bg-white px-6 py-4">
           <Text className="text-lg font-semibold text-ink">{breadcrumb || classRow.name}</Text>
           <View className="flex-row items-center gap-2.5">
+            <Pressable
+              onPress={() =>
+                activeLiveResource
+                  ? router.push(`/class-progress/${classId}?resourceId=${activeLiveResource.id}`)
+                  : showFlash('Choose a live lesson first.')
+              }
+              className="flex-row items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5"
+            >
+              <Feather name="activity" size={15} color="#047857" />
+              <Text className="text-sm font-semibold text-emerald-700">See Student Progress</Text>
+            </Pressable>
             <ToolbarButton
               icon="calendar"
               label="Calendar View"
@@ -255,6 +268,13 @@ export default function ClassLessonsScreen() {
                 onSearchChange={setSearch}
                 onBrowseFiles={handleBrowseFiles}
                 uploading={uploadFile.isPending}
+                onToggleLiveSession={(resource, live) =>
+                  setLiveSession.mutate({ resourceId: resource.id, live }, {
+                    onSuccess: () => showFlash(live ? `${resource.title} is now live.` : `${resource.title} is no longer live.`),
+                    onError: () => showFlash("Couldn't update the live session."),
+                  })
+                }
+                onViewProgress={(resource) => router.push(`/class-progress/${classId}?resourceId=${resource.id}`)}
                 fileActions={fileActions}
               />
             )}
@@ -383,6 +403,8 @@ interface LessonsSectionProps {
   onSearchChange: (v: string) => void;
   onBrowseFiles: (week: number) => void;
   uploading: boolean;
+  onToggleLiveSession: (resource: LessonResource, live: boolean) => void;
+  onViewProgress: (resource: LessonResource) => void;
   fileActions: FileActions;
 }
 
@@ -396,6 +418,8 @@ function LessonsSection({
   onSearchChange,
   onBrowseFiles,
   uploading,
+  onToggleLiveSession,
+  onViewProgress,
   fileActions,
 }: LessonsSectionProps) {
   return (
@@ -431,6 +455,8 @@ function LessonsSection({
           onSelectWeek={onSelectWeek}
           onBrowseFiles={() => onBrowseFiles(selectedWeek)}
           uploading={uploading}
+          onToggleLiveSession={onToggleLiveSession}
+          onViewProgress={onViewProgress}
           fileActions={fileActions}
         />
       ) : (
@@ -458,6 +484,8 @@ function OpenWeekView({
   onSelectWeek,
   onBrowseFiles,
   uploading,
+  onToggleLiveSession,
+  onViewProgress,
   fileActions,
 }: {
   week: number;
@@ -467,6 +495,8 @@ function OpenWeekView({
   onSelectWeek: (week: number) => void;
   onBrowseFiles: () => void;
   uploading: boolean;
+  onToggleLiveSession: (resource: LessonResource, live: boolean) => void;
+  onViewProgress: (resource: LessonResource) => void;
   fileActions: FileActions;
 }) {
   return (
@@ -490,7 +520,13 @@ function OpenWeekView({
         <View className="gap-4">
           {lessons.map((lesson) =>
             lesson.file_type === 'pdf' || lesson.file_type === 'image' ? (
-              <SlideThumbnailGroup key={lesson.id} resource={lesson} actions={fileActions} />
+              <SlideThumbnailGroup
+                key={lesson.id}
+                resource={lesson}
+                onToggleLiveSession={onToggleLiveSession}
+                onViewProgress={onViewProgress}
+                actions={fileActions}
+              />
             ) : (
               <FileCard key={lesson.id} resource={lesson} actions={fileActions} />
             ),
@@ -604,9 +640,13 @@ function OtherWeeksStrip({
 
 function SlideThumbnailGroup({
   resource,
+  onToggleLiveSession,
+  onViewProgress,
   actions,
 }: {
   resource: LessonResource;
+  onToggleLiveSession: (resource: LessonResource, live: boolean) => void;
+  onViewProgress: (resource: LessonResource) => void;
   actions: FileActions;
 }) {
   const { data: slides, isLoading, updateSlidesPacing } = useLessonSlides(resource.id);
@@ -694,7 +734,19 @@ function SlideThumbnailGroup({
             </Pressable>
           </View>
         ) : (
-          <View className="flex-row items-center gap-3">
+          <View className="flex-row flex-wrap items-center justify-end gap-2">
+            <Pressable
+              onPress={() => onToggleLiveSession(resource, !resource.is_live_session)}
+              accessibilityLabel="Toggle live session"
+              className={`flex-row items-center gap-1.5 rounded-full px-2.5 py-1 ${
+                resource.is_live_session ? 'bg-emerald-600' : 'bg-black/[0.05]'
+              }`}
+            >
+              <View className={`h-2 w-2 rounded-full ${resource.is_live_session ? 'bg-white' : 'bg-emerald-500'}`} />
+              <Text className={`text-[11px] font-semibold ${resource.is_live_session ? 'text-white' : 'text-ink/70'}`}>
+                {resource.is_live_session ? 'Live now' : 'Go live'}
+              </Text>
+            </Pressable>
             <Pressable
               onPress={() => setSelectionMode(true)}
               accessibilityLabel="Select slides"
@@ -702,6 +754,14 @@ function SlideThumbnailGroup({
             >
               <Feather name="check-square" size={12} color="#7c3aed" />
               <Text className="text-[11px] font-semibold text-violet-700">Set pacing</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => onViewProgress(resource)}
+              accessibilityLabel="View student progress"
+              className="flex-row items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1"
+            >
+              <Feather name="users" size={12} color="#0369a1" />
+              <Text className="text-[11px] font-semibold text-sky-700">View students progress</Text>
             </Pressable>
             <Pressable
               onPress={() => setRenaming(true)}
