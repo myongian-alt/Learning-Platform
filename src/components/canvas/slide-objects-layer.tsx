@@ -209,8 +209,8 @@ function SlideObjectItem({
           top: object.y * zoom,
           width: baseWidth * zoom,
           height: baseHeight * zoom,
+          pointerEvents: 'auto',
         }}
-        pointerEvents="auto"
       >
         <QuestionAnswerContent object={object} zoom={zoom} value={answerValue} onChange={onAnswerChange} />
       </View>
@@ -258,8 +258,8 @@ function SlideObjectItem({
         top: object.y * zoom,
         width: baseWidth * zoom,
         height: baseHeight * zoom,
+        pointerEvents: interactive ? 'auto' : 'none',
       }}
-      pointerEvents={interactive ? 'auto' : 'none'}
     >
       {selected && (
         <GestureDetector gesture={dragGesture}>

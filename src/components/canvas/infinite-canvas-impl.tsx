@@ -26,6 +26,8 @@ interface Stroke {
   opacity: number;
 }
 
+type SkPathBuilder = ReturnType<typeof Skia.PathBuilder.Make>;
+
 const TOOL_STYLE: Record<string, { opacity: number; widthMultiplier: number }> = {
   pen: { opacity: 1, widthMultiplier: 1 },
   highlighter: { opacity: 0.35, widthMultiplier: 4 },
@@ -59,7 +61,7 @@ export const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasPro
 
     const [strokes, setStrokes] = useState<Stroke[]>([]);
     const [, bumpRedraw] = useState(0);
-    const activePath = useRef<SkPath | null>(null);
+    const activePath = useRef<SkPathBuilder | null>(null);
     const activePoints = useRef<{ x: number; y: number }[]>([]);
     const activeMeta = useRef<{ color: string; strokeWidth: number; opacity: number } | null>(null);
     const isPanMode = tool === 'pointer';
@@ -72,7 +74,7 @@ export const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasPro
     const savedTranslateY = useSharedValue(0);
 
     const startStroke = (x: number, y: number) => {
-      const path = Skia.Path.Make();
+      const path = Skia.PathBuilder.Make();
       path.moveTo(x, y);
       activePath.current = path;
       activePoints.current = [{ x, y }];
@@ -96,7 +98,7 @@ export const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasPro
       if (!activePath.current || !activeMeta.current) return;
       const finished: Stroke = {
         id: `${Date.now()}`,
-        path: activePath.current,
+        path: activePath.current.detach(),
         ...activeMeta.current,
       };
       setStrokes((prev) => [...prev, finished]);
@@ -201,7 +203,7 @@ export const InfiniteCanvas = forwardRef<InfiniteCanvasHandle, InfiniteCanvasPro
               ))}
               {activePath.current && activeMeta.current && (
                 <Path
-                  path={activePath.current}
+                  path={activePath.current.build()}
                   color={activeMeta.current.color}
                   style="stroke"
                   strokeWidth={activeMeta.current.strokeWidth}

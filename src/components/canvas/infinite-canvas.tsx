@@ -22,7 +22,13 @@ const LazyInfiniteCanvas = Platform.OS === 'web' ? lazy(() => import('./infinite
 
 function ErrorFallback() {
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none" className="items-center justify-center p-6">
+    <View
+      style={{
+        ...StyleSheet.absoluteFillObject,
+        pointerEvents: 'none',
+      }}
+      className="items-center justify-center p-6"
+    >
       <View className="rounded-lg bg-red-50 px-3 py-2">
         <Text className="text-center text-xs font-medium text-red-600">
           Drawing tools failed to load. Try refreshing the page.
