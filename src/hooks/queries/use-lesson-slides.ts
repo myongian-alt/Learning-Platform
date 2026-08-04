@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { renderPdfToSlides, SLIDES_SUPPORTED } from '@/lib/pdf-to-slides';
 import { supabase } from '@/lib/supabase';
 import type { LessonSlide, SlideActivityTag, SlidePacingMode } from '@/types/database';
 
@@ -57,6 +58,17 @@ export type SlideAnswers = Record<string, string | number>;
 
 export function useLessonSlides(resourceId: string | null) {
   const queryClient = useQueryClient();
+
+  const getNextSlidePosition = async () => {
+    const { data, error } = await supabase
+      .from('lesson_slides')
+      .select('position')
+      .eq('resource_id', resourceId!)
+      .order('position', { ascending: false })
+      .limit(1);
+    if (error) throw error;
+    return (data?.[0]?.position ?? 0) + 1;
+  };
 
   const query = useQuery({
     queryKey: ['lesson-slides', resourceId],
@@ -156,5 +168,91 @@ export function useLessonSlides(resourceId: string | null) {
     },
   });
 
-  return { ...query, updateSlide, updateSlidesPacing, saveAnnotations, saveObjects };
+  const addBlankSlide = useMutation({
+    mutationFn: async () => {
+      if (!resourceId) throw new Error('No lesson selected.');
+      const position = await getNextSlidePosition();
+      const { error } = await supabase
+        .from('lesson_slides')
+        .insert({ resource_id: resourceId, position, storage_path: null });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lesson-slides', resourceId] });
+    },
+  });
+
+  const appendSlidesFromFile = useMutation({
+    mutationFn: async (input: { uri: string; filename: string; mimeType: string | null }) => {
+      if (!resourceId) throw new Error('No lesson selected.');
+
+      const response = await fetch(input.uri);
+      const blob = await response.blob();
+      const mimeType = input.mimeType ?? blob.type ?? null;
+      const lower = input.filename.toLowerCase();
+      const isImage = Boolean(mimeType?.startsWith('image/'));
+      const isPdf = mimeType === 'application/pdf' || lower.endsWith('.pdf');
+
+      if (!isImage && !isPdf) {
+        throw new Error('Only PDF or image files can be appended as lesson slides.');
+      }
+      if (!SLIDES_SUPPORTED) {
+        throw new Error('Slide conversion is not supported on this platform.');
+      }
+
+      const { data: resource, error: resourceError } = await supabase
+        .from('lesson_resources')
+        .select('id,class_id,week_number')
+        .eq('id', resourceId)
+        .single();
+      if (resourceError || !resource) {
+        throw resourceError ?? new Error('Could not load the lesson resource.');
+      }
+
+      let position = await getNextSlidePosition();
+
+      if (isImage) {
+        const extension = lower.split('.').pop() || 'png';
+        const path = `${resource.class_id}/${resource.week_number}/slides/${resource.id}/${position}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from('lesson-files')
+          .upload(path, blob, { contentType: mimeType ?? 'image/png', upsert: true });
+        if (uploadError) throw uploadError;
+
+        const { error: insertError } = await supabase
+          .from('lesson_slides')
+          .insert({ resource_id: resource.id, position, storage_path: path });
+        if (insertError) throw insertError;
+        return;
+      }
+
+      const slides = await renderPdfToSlides(blob);
+      for (const slide of slides) {
+        const currentPosition = position + slide.position - 1;
+        const path = `${resource.class_id}/${resource.week_number}/slides/${resource.id}/${currentPosition}.png`;
+        const { error: uploadError } = await supabase.storage
+          .from('lesson-files')
+          .upload(path, slide.blob, { contentType: 'image/png', upsert: true });
+        if (uploadError) throw uploadError;
+
+        const { error: insertError } = await supabase
+          .from('lesson_slides')
+          .insert({ resource_id: resource.id, position: currentPosition, storage_path: path });
+        if (insertError) throw insertError;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lesson-slides', resourceId] });
+    },
+  });
+
+  return {
+    ...query,
+    updateSlide,
+    updateSlidesPacing,
+    saveAnnotations,
+    saveObjects,
+    addBlankSlide,
+    appendSlidesFromFile,
+  };
 }

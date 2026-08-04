@@ -2,10 +2,13 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Animated,
   Image,
+  PanResponder,
   Pressable,
   ScrollView,
   Text,
@@ -673,7 +676,8 @@ function SlideThumbnailGroup({
   onViewProgress: (resource: LessonResource) => void;
   actions: FileActions;
 }) {
-  const { data: slides, isLoading, updateSlidesPacing } = useLessonSlides(resource.id);
+  const { data: slides, isLoading, updateSlidesPacing, addBlankSlide, appendSlidesFromFile } =
+    useLessonSlides(resource.id);
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState(resource.title);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -708,6 +712,39 @@ function SlideThumbnailGroup({
     if (trimmed && trimmed !== resource.title) actions.onRename(resource, trimmed);
     else setDraftTitle(resource.title);
     setRenaming(false);
+  };
+
+  const handleAppendFile = async () => {
+    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: false });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+
+    appendSlidesFromFile.mutate(
+      {
+        uri: asset.uri,
+        filename: asset.name,
+        mimeType: asset.mimeType ?? null,
+      },
+      {
+        onError: (error) => {
+          Alert.alert('Could not append slides', error.message);
+        },
+      },
+    );
+  };
+
+  const openAddSlideOptions = () => {
+    Alert.alert('Add to this lesson', 'Add slides from a file or insert a blank slide.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Add file', onPress: handleAppendFile },
+      {
+        text: 'Blank slide',
+        onPress: () =>
+          addBlankSlide.mutate(undefined, {
+            onError: (error) => Alert.alert('Could not add blank slide', error.message),
+          }),
+      },
+    ]);
   };
 
   if (converting || failed) {
@@ -911,6 +948,36 @@ function SlideThumbnailGroup({
             </Pressable>
           );
         })}
+
+        <Pressable
+          onPress={openAddSlideOptions}
+          accessibilityLabel="Add more slides"
+          style={{ width: 124 }}
+          className="gap-1"
+          disabled={appendSlidesFromFile.isPending || addBlankSlide.isPending}
+        >
+          <View
+            style={{
+              height: 90,
+              borderStyle: 'dashed',
+              borderColor: '#a78bfa',
+              borderWidth: 1.5,
+            }}
+            className="items-center justify-center overflow-hidden rounded-lg bg-violet-50"
+          >
+            {appendSlidesFromFile.isPending || addBlankSlide.isPending ? (
+              <ActivityIndicator size="small" color="#7c3aed" />
+            ) : (
+              <>
+                <View className="h-8 w-8 items-center justify-center rounded-full bg-violet-600">
+                  <Feather name="plus" size={16} color="#fff" />
+                </View>
+                <Text className="mt-1 text-[10px] font-semibold text-violet-700">Add slide</Text>
+              </>
+            )}
+          </View>
+          <Text className="text-center text-[10px] font-medium text-ink/45">After Slide {slides?.length ?? 0}</Text>
+        </Pressable>
       </View>
 
       <View className="mt-1 flex-row justify-end">
@@ -1067,54 +1134,125 @@ function TaskPickerOverlay({
 }) {
   return (
     <View className="absolute inset-0 z-20 items-center justify-center px-4">
-      <Pressable className="absolute inset-0 bg-black/25" onPress={onClose} />
-      <View className="w-full max-w-[430px] gap-5 rounded-3xl bg-white p-4 shadow-2xl">
-        <View className="gap-1 px-1">
-          <Text className="text-lg font-bold text-ink">Add a Task</Text>
-          <Text className="text-sm text-ink/50">
-            {selectedWeek ? `Tap to add this activity to Week ${selectedWeek}` : 'Choose an activity type to continue'}
-          </Text>
+      <View className="absolute inset-0 bg-black/25" pointerEvents="none" />
+      <View className="w-full max-w-[360px] gap-3 rounded-3xl bg-white p-3 shadow-2xl">
+        <View className="flex-row items-start justify-between gap-2 px-1">
+          <View className="flex-1 gap-1">
+            <Text className="text-lg font-bold text-ink">Add a Task</Text>
+            <Text className="text-xs text-ink/50">
+            {selectedWeek
+              ? `Drag a card to add it to Week ${selectedWeek} (or tap).`
+              : 'Drag a card to add (or tap).'}
+            </Text>
+          </View>
+          <Pressable
+            onPress={onClose}
+            accessibilityLabel="Close task picker"
+            className="h-8 w-8 items-center justify-center rounded-full bg-black/5"
+          >
+            <Feather name="x" size={15} color="#6b7280" />
+          </Pressable>
         </View>
 
-        <TaskOptionCard
+        <DraggableTaskCard
+          kind="quiz"
           color="violet"
-          icon={<Ionicons name="game-controller" size={20} color="#fff" />}
+          icon={<Ionicons name="game-controller" size={16} color="#fff" />}
           title="Quizzis & Games"
           description="Add interactive quizzes, polls, and games"
-          onPress={() => onActivityTap('quiz')}
+          onAdd={onActivityTap}
         />
-        <TaskOptionCard
+        <DraggableTaskCard
+          kind="assignment"
           color="emerald"
-          icon={<Feather name="file-text" size={20} color="#fff" />}
+          icon={<Feather name="file-text" size={16} color="#fff" />}
           title="Assignment / Homework"
           description="Create assignments and homework tasks"
-          onPress={() => onActivityTap('assignment')}
+          onAdd={onActivityTap}
         />
-        <TaskOptionCard
+        <DraggableTaskCard
+          kind="project"
           color="amber"
-          icon={<Feather name="folder" size={20} color="#fff" />}
+          icon={<Feather name="folder" size={16} color="#fff" />}
           title="Projects"
           description="Add projects and long-term tasks"
-          onPress={() => onActivityTap('project')}
+          onAdd={onActivityTap}
         />
       </View>
     </View>
   );
 }
 
-function TaskOptionCard({
+function DraggableTaskCard({
+  kind,
   color,
   icon,
   title,
   description,
-  onPress,
+  onAdd,
 }: {
+  kind: 'quiz' | 'assignment' | 'project';
   color: 'violet' | 'emerald' | 'amber';
   icon: React.ReactNode;
   title: string;
   description: string;
-  onPress: () => void;
+  onAdd: (kind: 'quiz' | 'assignment' | 'project') => void;
 }) {
+  const pan = useState(() => new Animated.ValueXY())[0];
+  const [dragging, setDragging] = useState(false);
+
+  const resetPosition = useCallback(() => {
+    Animated.spring(pan, {
+      toValue: { x: 0, y: 0 },
+      useNativeDriver: false,
+      bounciness: 6,
+    }).start(() => setDragging(false));
+  }, [pan]);
+
+  const commitAdd = useCallback(() => {
+    Animated.timing(pan, {
+      toValue: { x: 0, y: 0 },
+      duration: 100,
+      useNativeDriver: false,
+    }).start(() => {
+      setDragging(false);
+      onAdd(kind);
+    });
+  }, [kind, onAdd, pan]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => {
+          setDragging(true);
+          pan.extractOffset();
+        },
+        onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
+          useNativeDriver: false,
+        }),
+        onPanResponderRelease: (_, gesture) => {
+          pan.flattenOffset();
+          const didDrag = Math.abs(gesture.dx) > 8 || Math.abs(gesture.dy) > 8;
+          // Any clear drag counts as adding the task to the current lesson.
+          if (didDrag) {
+            commitAdd();
+            return;
+          }
+          setDragging(false);
+          onAdd(kind);
+          resetPosition();
+        },
+        onPanResponderTerminate: () => {
+          pan.flattenOffset();
+          resetPosition();
+        },
+      }),
+    [commitAdd, kind, onAdd, pan, resetPosition],
+  );
+
   const bg = {
     violet: 'bg-violet-50',
     emerald: 'bg-emerald-50',
@@ -1132,18 +1270,20 @@ function TaskOptionCard({
   }[color];
 
   return (
-    <Pressable onPress={onPress} className={`gap-2 rounded-3xl p-6 ${bg}`}>
-      <View className="flex-row items-start justify-between">
-        <View className={`h-14 w-14 items-center justify-center rounded-2xl ${iconBg}`}>{icon}</View>
-        <Feather name="menu" size={20} color="rgba(0,0,0,0.25)" />
+    <Animated.View
+      {...panResponder.panHandlers}
+      style={{ transform: [{ translateX: pan.x }, { translateY: pan.y }] }}
+    >
+      <View className={`gap-1.5 rounded-2xl p-4 ${bg}`}>
+        <View className="flex-row items-start justify-between">
+          <View className={`h-9 w-9 items-center justify-center rounded-xl ${iconBg}`}>{icon}</View>
+          <Feather name="move" size={14} color="rgba(0,0,0,0.25)" />
+        </View>
+        <Text className={`text-base font-bold ${text}`}>{title}</Text>
+        <Text className="text-xs leading-5 text-ink/50">{description}</Text>
+        {dragging && <Text className="text-[10px] font-semibold text-ink/45">Release to add</Text>}
       </View>
-      <Text className={`text-[40px] font-bold leading-[42px] ${text}`}>
-        {title}
-      </Text>
-      <Text className="text-base leading-7 text-ink/50">
-        {description}
-      </Text>
-    </Pressable>
+    </Animated.View>
   );
 }
 
