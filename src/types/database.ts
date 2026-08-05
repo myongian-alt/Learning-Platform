@@ -403,8 +403,72 @@ export type Database = {
           },
         ];
       };
+      lesson_ai_resources: {
+        Row: {
+          created_at: string;
+          error_message: string | null;
+          generated_at: string | null;
+          generated_by: string | null;
+          id: string;
+          khan_academy: Json | null;
+          mcqs: Json | null;
+          model: string | null;
+          quizizz: Json | null;
+          resource_id: string;
+          status: Database['public']['Enums']['ai_resource_status'];
+          topic_summary: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          error_message?: string | null;
+          generated_at?: string | null;
+          generated_by?: string | null;
+          id?: string;
+          khan_academy?: Json | null;
+          mcqs?: Json | null;
+          model?: string | null;
+          quizizz?: Json | null;
+          resource_id: string;
+          status?: Database['public']['Enums']['ai_resource_status'];
+          topic_summary?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          error_message?: string | null;
+          generated_at?: string | null;
+          generated_by?: string | null;
+          id?: string;
+          khan_academy?: Json | null;
+          mcqs?: Json | null;
+          model?: string | null;
+          quizizz?: Json | null;
+          resource_id?: string;
+          status?: Database['public']['Enums']['ai_resource_status'];
+          topic_summary?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'lesson_ai_resources_generated_by_fkey';
+            columns: ['generated_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'lesson_ai_resources_resource_id_fkey';
+            columns: ['resource_id'];
+            isOneToOne: true;
+            referencedRelation: 'lesson_resources';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       lesson_attached_tasks: {
         Row: {
+          content: Json | null;
           created_at: string;
           created_by: string;
           id: string;
@@ -413,6 +477,7 @@ export type Database = {
           resource_id: string;
         };
         Insert: {
+          content?: Json | null;
           created_at?: string;
           created_by?: string;
           id?: string;
@@ -421,6 +486,7 @@ export type Database = {
           resource_id: string;
         };
         Update: {
+          content?: Json | null;
           created_at?: string;
           created_by?: string;
           id?: string;
@@ -1027,12 +1093,14 @@ export type Database = {
       };
     };
     Enums: {
+      ai_resource_status: 'pending' | 'ready' | 'failed';
       assignment_status: 'draft' | 'published' | 'archived';
       delivery_mode: 'teacher_paced' | 'student_paced' | 'front_of_class';
       help_request_status: 'open' | 'acknowledged' | 'resolved';
       lesson_conversion_status: 'none' | 'pending' | 'ready' | 'failed';
       lesson_file_type: 'pdf' | 'pptx' | 'docx' | 'image' | 'video' | 'link';
-      lesson_task_kind: 'quiz' | 'assignment' | 'project';
+      lesson_task_kind:
+        'quiz' | 'assignment' | 'project' | 'khan_academy_video' | 'quizizz_quiz' | 'custom_mcqs';
       library_item_type: 'quiz' | 'lesson' | 'activity' | 'video';
       lms_provider: 'google_classroom' | 'canvas' | 'schoology' | 'clever';
       page_source_type: 'blank_canvas' | 'pdf' | 'image' | 'slide' | 'video' | 'question' | 'link';
@@ -1187,12 +1255,20 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      ai_resource_status: ['pending', 'ready', 'failed'],
       assignment_status: ['draft', 'published', 'archived'],
       delivery_mode: ['teacher_paced', 'student_paced', 'front_of_class'],
       help_request_status: ['open', 'acknowledged', 'resolved'],
       lesson_conversion_status: ['none', 'pending', 'ready', 'failed'],
       lesson_file_type: ['pdf', 'pptx', 'docx', 'image', 'video', 'link'],
-      lesson_task_kind: ['quiz', 'assignment', 'project'],
+      lesson_task_kind: [
+        'quiz',
+        'assignment',
+        'project',
+        'khan_academy_video',
+        'quizizz_quiz',
+        'custom_mcqs',
+      ],
       library_item_type: ['quiz', 'lesson', 'activity', 'video'],
       lms_provider: ['google_classroom', 'canvas', 'schoology', 'clever'],
       page_source_type: ['blank_canvas', 'pdf', 'image', 'slide', 'video', 'question', 'link'],
@@ -1251,6 +1327,7 @@ export type LessonTaskKind = Enums<'lesson_task_kind'>;
 export type LessonConversionStatus = Enums<'lesson_conversion_status'>;
 export type SlideActivityTag = Enums<'slide_activity_tag'>;
 export type SlidePacingMode = Enums<'slide_pacing_mode'>;
+export type AiResourceStatus = Enums<'ai_resource_status'>;
 
 export type StrokePoint = {
   x: number;
@@ -1277,3 +1354,4 @@ export type LessonSlide = Tables<'lesson_slides'>;
 export type LessonAttachedTask = Tables<'lesson_attached_tasks'>;
 export type LessonLivePresence = Tables<'lesson_live_presence'>;
 export type SlideSubmission = Tables<'slide_submissions'>;
+export type LessonAiResources = Tables<'lesson_ai_resources'>;

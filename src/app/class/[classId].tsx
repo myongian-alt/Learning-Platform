@@ -1,5 +1,4 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
-import { useQueryClient } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
@@ -8,6 +7,7 @@ import {
   Alert,
   Animated,
   Image,
+  Linking,
   PanResponder,
   Pressable,
   ScrollView,
@@ -24,13 +24,19 @@ import { SLIDE_TAGS, SlideViewerModal } from '@/components/slides/slide-viewer';
 import { useClassAssignments } from '@/hooks/queries/use-class-assignments';
 import { useClassDetail } from '@/hooks/queries/use-class-detail';
 import { useClassRoster } from '@/hooks/queries/use-class-roster';
-import { useCreateAssignment } from '@/hooks/queries/use-create-assignment';
 import { useLessonAttachedTasks } from '@/hooks/queries/use-lesson-attached-tasks';
+import type {
+  AiTaskKind,
+  AttachedCardContent,
+  KhanAcademyResource,
+  McqQuestion,
+  QuizizzResource,
+} from '@/hooks/queries/use-lesson-ai-resources';
+import { useLessonAiResources } from '@/hooks/queries/use-lesson-ai-resources';
 import { useLessonResources } from '@/hooks/queries/use-lesson-resources';
 import { useLessonSlides } from '@/hooks/queries/use-lesson-slides';
 import { signOut } from '@/lib/auth-actions';
 import { useAuthStore } from '@/store/auth-store';
-import { supabase } from '@/lib/supabase';
 import type { LessonFileType, LessonResource } from '@/types/database';
 
 const TOTAL_WEEKS = 15;
@@ -49,32 +55,31 @@ const FILE_TYPE_META: Record<
 };
 
 type Section = 'lessons' | 'quizzes' | 'gradebook' | 'students' | 'groups' | 'settings';
-type LessonTaskKind = 'quiz' | 'assignment' | 'project';
 
-const LESSON_TASK_META: Record<
-  LessonTaskKind,
+const AI_TASK_META: Record<
+  AiTaskKind,
   { label: string; shortLabel: string; color: string; bg: string; icon: keyof typeof Feather.glyphMap }
 > = {
-  quiz: {
-    label: 'Quizzis & Games',
-    shortLabel: 'Quiz / Game',
+  khan_academy_video: {
+    label: 'Khan Academy Video',
+    shortLabel: 'KA Video',
+    color: '#0c7c59',
+    bg: '#e6f7ef',
+    icon: 'play-circle',
+  },
+  quizizz_quiz: {
+    label: 'Quizizz Quiz',
+    shortLabel: 'Quizizz',
     color: '#7c3aed',
     bg: '#f3e8ff',
     icon: 'activity',
   },
-  assignment: {
-    label: 'Assignment / Homework',
-    shortLabel: 'Assignment',
-    color: '#047857',
-    bg: '#ecfdf5',
-    icon: 'file-text',
-  },
-  project: {
-    label: 'Projects',
-    shortLabel: 'Project',
+  custom_mcqs: {
+    label: 'Custom MCQs',
+    shortLabel: 'MCQs',
     color: '#b45309',
     bg: '#fffbeb',
-    icon: 'folder',
+    icon: 'help-circle',
   },
 };
 
@@ -94,7 +99,6 @@ export default function ClassLessonsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const profile = useAuthStore((s) => s.profile);
-  const queryClient = useQueryClient();
 
   const classQuery = useClassDetail(classId);
   const { assignments } = useClassAssignments(classId);
@@ -109,7 +113,6 @@ export default function ClassLessonsScreen() {
     deleteFile,
     retryConversion,
   } = useLessonResources(classId);
-  const createAssignment = useCreateAssignment();
 
   const [section, setSection] = useState<Section>('lessons');
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
@@ -177,45 +180,6 @@ export default function ClassLessonsScreen() {
         onError: () => showFlash("Couldn't upload that file."),
       },
     );
-  };
-
-  const handleActivityTap = (kind: LessonTaskKind, targetWeek?: number | null) => {
-    const weekForTask = targetWeek ?? selectedWeek;
-    if (!weekForTask) {
-      showFlash('Select a week first.');
-      return;
-    }
-    if (kind === 'assignment') {
-      createAssignment.mutate(
-        { classId, title: `Week ${weekForTask} Assignment`, weekNumber: weekForTask },
-        {
-          onSuccess: () => {
-            showFlash(`Assignment added to Week ${weekForTask}`);
-            queryClient.invalidateQueries({ queryKey: ['class-assignments', classId] });
-          },
-        },
-      );
-      return;
-    }
-    showFlash(kind === 'quiz' ? 'Quizzes & games are coming soon.' : 'Projects are coming soon.');
-  };
-
-  const attachTaskToResource = async (resourceId: string, kind: LessonTaskKind) => {
-    const { data: latest, error: latestError } = await supabase
-      .from('lesson_attached_tasks')
-      .select('position')
-      .eq('resource_id', resourceId)
-      .order('position', { ascending: false })
-      .limit(1);
-    if (latestError) throw latestError;
-
-    const nextPosition = (latest?.[0]?.position ?? 0) + 1;
-    const { error } = await supabase
-      .from('lesson_attached_tasks')
-      .insert({ resource_id: resourceId, kind, position: nextPosition });
-    if (error) throw error;
-
-    queryClient.invalidateQueries({ queryKey: ['lesson-attached-tasks', resourceId] });
   };
 
   if (profile?.role === 'student') {
@@ -390,19 +354,15 @@ export default function ClassLessonsScreen() {
 
       {section === 'lessons' && taskPickerOpen && (
         <TaskPickerOverlay
+          resourceId={taskPickerResourceId}
           selectedWeek={taskPickerWeek ?? selectedWeek}
           onClose={() => {
             setTaskPickerOpen(false);
             setTaskPickerWeek(null);
             setTaskPickerResourceId(null);
           }}
-          onActivityTap={(kind) => {
-            handleActivityTap(kind, taskPickerWeek ?? selectedWeek);
-            if (taskPickerResourceId) {
-              attachTaskToResource(taskPickerResourceId, kind).catch(() => {
-                showFlash("Couldn't attach task to this lesson.");
-              });
-            }
+          onAttached={(label) => {
+            showFlash(`${label} attached.`);
             setTaskPickerOpen(false);
             setTaskPickerWeek(null);
             setTaskPickerResourceId(null);
@@ -766,6 +726,20 @@ function SlideThumbnailGroup({
     exitSelectionMode();
   };
 
+  const viewAttachedTask = (kind: AiTaskKind, content: unknown) => {
+    if (kind === 'khan_academy_video' || kind === 'quizizz_quiz') {
+      const resource = content as KhanAcademyResource | QuizizzResource;
+      Alert.alert(resource.title, `${resource.description}\n\n${resource.url}`, [
+        { text: 'Close', style: 'cancel' },
+        { text: 'Open link', onPress: () => Linking.openURL(resource.url) },
+      ]);
+    } else {
+      const mcqs = content as McqQuestion[];
+      const summary = mcqs.map((mcq, i) => `${i + 1}. ${mcq.question}`).join('\n\n');
+      Alert.alert('Custom MCQs', summary || 'No questions found.');
+    }
+  };
+
   const converting = resource.conversion_status === 'pending';
   const failed = resource.conversion_status === 'failed';
 
@@ -1009,45 +983,57 @@ function SlideThumbnailGroup({
           <Text className="text-center text-[10px] font-medium text-ink/45">After Slide {slides?.length ?? 0}</Text>
         </Pressable>
 
-        {(attachedTasks ?? []).map((task, i) => {
-          const meta = LESSON_TASK_META[task.kind];
-          return (
-            <View key={task.id} style={{ width: 124 }} className="gap-1">
-              <View
-                style={{
-                  height: 90,
-                  borderColor: `${meta.color}66`,
-                  backgroundColor: meta.bg,
-                  borderWidth: 1,
-                }}
-                className="items-center justify-center rounded-lg"
+        {(attachedTasks ?? [])
+          .filter(
+            (task): task is typeof task & { kind: AiTaskKind } =>
+              task.kind === 'khan_academy_video' ||
+              task.kind === 'quizizz_quiz' ||
+              task.kind === 'custom_mcqs',
+          )
+          .map((task, i) => {
+            const meta = AI_TASK_META[task.kind];
+            return (
+              <Pressable
+                key={task.id}
+                onPress={() => viewAttachedTask(task.kind, task.content)}
+                style={{ width: 124 }}
+                className="gap-1"
               >
                 <View
-                  style={{ backgroundColor: meta.color }}
-                  className="h-7 w-7 items-center justify-center rounded-full"
+                  style={{
+                    height: 90,
+                    borderColor: `${meta.color}66`,
+                    backgroundColor: meta.bg,
+                    borderWidth: 1,
+                  }}
+                  className="items-center justify-center rounded-lg"
                 >
-                  <Feather name={meta.icon} size={12} color="#fff" />
+                  <View
+                    style={{ backgroundColor: meta.color }}
+                    className="h-7 w-7 items-center justify-center rounded-full"
+                  >
+                    <Feather name={meta.icon} size={12} color="#fff" />
+                  </View>
+                  <Text style={{ color: meta.color }} className="mt-1 text-[10px] font-semibold">
+                    {meta.shortLabel}
+                  </Text>
+                  <Text className="text-[9px] text-ink/45">Task attached</Text>
+                  <Pressable
+                    onPress={() =>
+                      removeTask.mutate(task.id, {
+                        onError: (error) => Alert.alert('Could not remove task', error.message),
+                      })
+                    }
+                    className="absolute right-1 top-1 h-5 w-5 items-center justify-center rounded-full bg-white/90"
+                    accessibilityLabel="Delete task"
+                  >
+                    <Feather name="x" size={10} color="#6b7280" />
+                  </Pressable>
                 </View>
-                <Text style={{ color: meta.color }} className="mt-1 text-[10px] font-semibold">
-                  {meta.shortLabel}
-                </Text>
-                <Text className="text-[9px] text-ink/45">Task attached</Text>
-                <Pressable
-                  onPress={() =>
-                    removeTask.mutate(task.id, {
-                      onError: (error) => Alert.alert('Could not remove task', error.message),
-                    })
-                  }
-                  className="absolute right-1 top-1 h-5 w-5 items-center justify-center rounded-full bg-white/90"
-                  accessibilityLabel="Delete task"
-                >
-                  <Feather name="x" size={10} color="#6b7280" />
-                </Pressable>
-              </View>
-              <Text className="text-center text-[10px] font-medium text-ink/45">After Slide {(slides?.length ?? 0) + i + 1}</Text>
-            </View>
-          );
-        })}
+                <Text className="text-center text-[10px] font-medium text-ink/45">After Slide {(slides?.length ?? 0) + i + 1}</Text>
+              </Pressable>
+            );
+          })}
       </View>
 
       <View className="mt-1 flex-row justify-end">
@@ -1354,25 +1340,49 @@ function DraggableSlideCard({
 }
 
 function TaskPickerOverlay({
-  onClose,
-  onActivityTap,
+  resourceId,
   selectedWeek,
+  onClose,
+  onAttached,
 }: {
-  onClose: () => void;
-  onActivityTap: (kind: 'quiz' | 'assignment' | 'project') => void;
+  resourceId: string | null;
   selectedWeek: number | null;
+  onClose: () => void;
+  onAttached: (label: string) => void;
 }) {
+  const { data: aiResources, isLoading, generate, attachCard } = useLessonAiResources(resourceId);
+  const [expandedMcqs, setExpandedMcqs] = useState(false);
+
+  const status = aiResources?.status;
+  const isGenerating = generate.isPending || status === 'pending';
+  const khan = aiResources?.khan_academy as unknown as KhanAcademyResource | null;
+  const quizizz = aiResources?.quizizz as unknown as QuizizzResource | null;
+  const mcqs = aiResources?.mcqs as unknown as McqQuestion[] | null;
+
+  const handleAttach = (kind: AiTaskKind, content: AttachedCardContent, label: string) => {
+    attachCard.mutate(
+      { kind, content },
+      {
+        onSuccess: () => onAttached(label),
+        onError: () => Alert.alert('Could not attach', "Couldn't attach this resource to the lesson."),
+      },
+    );
+  };
+
   return (
     <View className="absolute inset-0 z-20 items-center justify-center px-4">
       <View className="absolute inset-0 bg-black/25" pointerEvents="none" />
-      <View className="w-full max-w-[360px] gap-3 rounded-3xl bg-white p-3 shadow-2xl">
+      <View
+        className="w-full max-w-[420px] gap-3 rounded-3xl bg-white p-4 shadow-2xl"
+        style={{ maxHeight: '85%' }}
+      >
         <View className="flex-row items-start justify-between gap-2 px-1">
           <View className="flex-1 gap-1">
-            <Text className="text-lg font-bold text-ink">Add a Task</Text>
+            <Text className="text-lg font-bold text-ink">Additional Resources</Text>
             <Text className="text-xs text-ink/50">
-            {selectedWeek
-              ? `Drag a card to add it to Week ${selectedWeek} (or tap).`
-              : 'Drag a card to add (or tap).'}
+              {selectedWeek
+                ? `AI-suggested resources for Week ${selectedWeek}.`
+                : 'AI-suggested resources for this lesson.'}
             </Text>
           </View>
           <Pressable
@@ -1384,136 +1394,186 @@ function TaskPickerOverlay({
           </Pressable>
         </View>
 
-        <DraggableTaskCard
-          kind="quiz"
-          color="violet"
-          icon={<Ionicons name="game-controller" size={16} color="#fff" />}
-          title="Quizzis & Games"
-          description="Add interactive quizzes, polls, and games"
-          onAdd={onActivityTap}
-        />
-        <DraggableTaskCard
-          kind="assignment"
-          color="emerald"
-          icon={<Feather name="file-text" size={16} color="#fff" />}
-          title="Assignment / Homework"
-          description="Create assignments and homework tasks"
-          onAdd={onActivityTap}
-        />
-        <DraggableTaskCard
-          kind="project"
-          color="amber"
-          icon={<Feather name="folder" size={16} color="#fff" />}
-          title="Projects"
-          description="Add projects and long-term tasks"
-          onAdd={onActivityTap}
-        />
+        <ScrollView contentContainerClassName="gap-3">
+          {isLoading && (
+            <View className="items-center py-8">
+              <ActivityIndicator />
+            </View>
+          )}
+
+          {!isLoading && (!aiResources || status === 'failed') && !isGenerating && (
+            <View className="gap-3 rounded-2xl bg-violet-50 p-4">
+              {status === 'failed' && aiResources?.error_message ? (
+                <Text className="text-xs text-red-600">{aiResources.error_message}</Text>
+              ) : (
+                generate.isError && (
+                  <Text className="text-xs text-red-600">
+                    {generate.error instanceof Error ? generate.error.message : 'Something went wrong.'}
+                  </Text>
+                )
+              )}
+              <Text className="text-sm text-ink/60">
+                Analyze this lesson with AI to get a real Khan Academy video, a real Quizizz quiz, and
+                5 custom MCQs tailored to it.
+              </Text>
+              <Pressable
+                onPress={() => generate.mutate()}
+                accessibilityLabel="Generate AI resources"
+                className="flex-row items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3"
+              >
+                <Feather name="zap" size={14} color="#fff" />
+                <Text className="text-sm font-semibold text-white">
+                  {status === 'failed' ? 'Try again' : 'Generate AI Resources'}
+                </Text>
+              </Pressable>
+              <Text className="text-center text-[10px] text-ink/40">
+                Uses AI + web search — takes about 10–20s.
+              </Text>
+            </View>
+          )}
+
+          {isGenerating && (
+            <View className="items-center gap-2 rounded-2xl bg-violet-50 py-8">
+              <ActivityIndicator color="#7c3aed" />
+              <Text className="text-xs font-medium text-violet-700">Analyzing your lesson…</Text>
+            </View>
+          )}
+
+          {!isGenerating && status === 'ready' && (
+            <>
+              {aiResources?.topic_summary && (
+                <Text className="rounded-xl bg-black/[0.03] px-3 py-2 text-xs text-ink/60">
+                  {aiResources.topic_summary}
+                </Text>
+              )}
+
+              {khan && (
+                <ResourceCard
+                  color="emerald"
+                  icon={<Feather name="play-circle" size={16} color="#fff" />}
+                  kicker="Khan Academy Video"
+                  title={khan.title}
+                  description={khan.description}
+                  url={khan.url}
+                  onAttach={() => handleAttach('khan_academy_video', khan, 'Khan Academy video')}
+                  attaching={attachCard.isPending}
+                />
+              )}
+
+              {quizizz && (
+                <ResourceCard
+                  color="violet"
+                  icon={<Ionicons name="game-controller" size={16} color="#fff" />}
+                  kicker="Quizizz Quiz"
+                  title={quizizz.title}
+                  description={`${quizizz.questionCount} questions — ${quizizz.description}`}
+                  url={quizizz.url}
+                  onAttach={() => handleAttach('quizizz_quiz', quizizz, 'Quizizz quiz')}
+                  attaching={attachCard.isPending}
+                />
+              )}
+
+              {mcqs && mcqs.length > 0 && (
+                <View className="gap-1.5 rounded-2xl bg-amber-50 p-4">
+                  <View className="flex-row items-start justify-between">
+                    <View className="h-9 w-9 items-center justify-center rounded-xl bg-amber-500">
+                      <Feather name="help-circle" size={16} color="#fff" />
+                    </View>
+                    <Pressable
+                      onPress={() => handleAttach('custom_mcqs', mcqs, '5 custom MCQs')}
+                      disabled={attachCard.isPending}
+                      className="rounded-full bg-amber-600 px-3 py-1.5"
+                    >
+                      <Text className="text-xs font-semibold text-white">Attach all 5</Text>
+                    </Pressable>
+                  </View>
+                  <Text className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                    Custom MCQs
+                  </Text>
+                  <Text className="text-sm font-bold text-ink">{mcqs.length} original questions</Text>
+                  <Pressable onPress={() => setExpandedMcqs((v) => !v)}>
+                    <Text className="text-xs font-semibold text-amber-700">
+                      {expandedMcqs ? 'Hide questions' : 'Show questions'}
+                    </Text>
+                  </Pressable>
+                  {expandedMcqs &&
+                    mcqs.map((mcq, i) => (
+                      <View key={i} className="gap-1 rounded-lg bg-white/70 p-2.5">
+                        <Text className="text-xs font-semibold text-ink">
+                          {i + 1}. {mcq.question}
+                        </Text>
+                        {mcq.choices.map((choice, ci) => (
+                          <Text
+                            key={ci}
+                            className={`text-[11px] ${
+                              ci === mcq.correctIndex ? 'font-semibold text-emerald-700' : 'text-ink/60'
+                            }`}
+                          >
+                            {String.fromCharCode(65 + ci)}. {choice}
+                            {ci === mcq.correctIndex ? '  ✓' : ''}
+                          </Text>
+                        ))}
+                        <Text className="text-[10px] italic text-ink/40">{mcq.explanation}</Text>
+                      </View>
+                    ))}
+                </View>
+              )}
+
+              <Pressable onPress={() => generate.mutate()} className="items-center py-2">
+                <Text className="text-xs font-semibold text-violet-700">Regenerate</Text>
+              </Pressable>
+            </>
+          )}
+        </ScrollView>
       </View>
     </View>
   );
 }
 
-function DraggableTaskCard({
-  kind,
+function ResourceCard({
   color,
   icon,
+  kicker,
   title,
   description,
-  onAdd,
+  url,
+  onAttach,
+  attaching,
 }: {
-  kind: 'quiz' | 'assignment' | 'project';
-  color: 'violet' | 'emerald' | 'amber';
+  color: 'violet' | 'emerald';
   icon: React.ReactNode;
+  kicker: string;
   title: string;
   description: string;
-  onAdd: (kind: 'quiz' | 'assignment' | 'project') => void;
+  url: string;
+  onAttach: () => void;
+  attaching: boolean;
 }) {
-  const pan = useState(() => new Animated.ValueXY())[0];
-  const [dragging, setDragging] = useState(false);
-
-  const resetPosition = useCallback(() => {
-    Animated.spring(pan, {
-      toValue: { x: 0, y: 0 },
-      useNativeDriver: false,
-      bounciness: 6,
-    }).start(() => setDragging(false));
-  }, [pan]);
-
-  const commitAdd = useCallback(() => {
-    Animated.timing(pan, {
-      toValue: { x: 0, y: 0 },
-      duration: 100,
-      useNativeDriver: false,
-    }).start(() => {
-      setDragging(false);
-      onAdd(kind);
-    });
-  }, [kind, onAdd, pan]);
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: () => {
-          setDragging(true);
-          pan.extractOffset();
-        },
-        onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
-          useNativeDriver: false,
-        }),
-        onPanResponderRelease: (_, gesture) => {
-          pan.flattenOffset();
-          const didDrag = Math.abs(gesture.dx) > 8 || Math.abs(gesture.dy) > 8;
-          // Any clear drag counts as adding the task to the current lesson.
-          if (didDrag) {
-            commitAdd();
-            return;
-          }
-          setDragging(false);
-          onAdd(kind);
-          resetPosition();
-        },
-        onPanResponderTerminate: () => {
-          pan.flattenOffset();
-          resetPosition();
-        },
-      }),
-    [commitAdd, kind, onAdd, pan, resetPosition],
-  );
-
-  const bg = {
-    violet: 'bg-violet-50',
-    emerald: 'bg-emerald-50',
-    amber: 'bg-amber-50',
-  }[color];
-  const iconBg = {
-    violet: 'bg-violet-600',
-    emerald: 'bg-emerald-600',
-    amber: 'bg-amber-500',
-  }[color];
-  const text = {
-    violet: 'text-violet-700',
-    emerald: 'text-emerald-700',
-    amber: 'text-amber-700',
-  }[color];
+  const bg = color === 'violet' ? 'bg-violet-50' : 'bg-emerald-50';
+  const iconBg = color === 'violet' ? 'bg-violet-600' : 'bg-emerald-600';
+  const text = color === 'violet' ? 'text-violet-700' : 'text-emerald-700';
 
   return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      style={{ transform: [{ translateX: pan.x }, { translateY: pan.y }] }}
-    >
-      <View className={`gap-1.5 rounded-2xl p-4 ${bg}`}>
-        <View className="flex-row items-start justify-between">
-          <View className={`h-9 w-9 items-center justify-center rounded-xl ${iconBg}`}>{icon}</View>
-          <Feather name="move" size={14} color="rgba(0,0,0,0.25)" />
-        </View>
-        <Text className={`text-base font-bold ${text}`}>{title}</Text>
-        <Text className="text-xs leading-5 text-ink/50">{description}</Text>
-        {dragging && <Text className="text-[10px] font-semibold text-ink/45">Release to add</Text>}
+    <View className={`gap-1.5 rounded-2xl p-4 ${bg}`}>
+      <View className="flex-row items-start justify-between">
+        <View className={`h-9 w-9 items-center justify-center rounded-xl ${iconBg}`}>{icon}</View>
+        <Pressable
+          onPress={onAttach}
+          disabled={attaching}
+          className={`rounded-full px-3 py-1.5 ${color === 'violet' ? 'bg-violet-600' : 'bg-emerald-600'}`}
+        >
+          <Text className="text-xs font-semibold text-white">Attach</Text>
+        </Pressable>
       </View>
-    </Animated.View>
+      <Text className={`text-[10px] font-semibold uppercase tracking-wide ${text}`}>{kicker}</Text>
+      <Text className="text-sm font-bold text-ink">{title}</Text>
+      <Text className="text-xs leading-5 text-ink/50">{description}</Text>
+      <Pressable onPress={() => Linking.openURL(url)}>
+        <Text className={`text-xs font-semibold ${text}`} numberOfLines={1}>
+          {url}
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
