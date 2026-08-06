@@ -309,6 +309,113 @@ export type Database = {
           },
         ];
       };
+      gradebook_custom_columns: {
+        Row: {
+          class_id: string;
+          created_at: string;
+          created_by: string;
+          id: string;
+          label: string;
+          updated_at: string;
+        };
+        Insert: {
+          class_id: string;
+          created_at?: string;
+          created_by?: string;
+          id?: string;
+          label: string;
+          updated_at?: string;
+        };
+        Update: {
+          class_id?: string;
+          created_at?: string;
+          created_by?: string;
+          id?: string;
+          label?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'gradebook_custom_columns_class_id_fkey';
+            columns: ['class_id'];
+            isOneToOne: false;
+            referencedRelation: 'classes';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'gradebook_custom_columns_created_by_fkey';
+            columns: ['created_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      gradebook_custom_scores: {
+        Row: {
+          column_id: string;
+          id: string;
+          score: number | null;
+          student_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          column_id: string;
+          id?: string;
+          score?: number | null;
+          student_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          column_id?: string;
+          id?: string;
+          score?: number | null;
+          student_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'gradebook_custom_scores_column_id_fkey';
+            columns: ['column_id'];
+            isOneToOne: false;
+            referencedRelation: 'gradebook_custom_columns';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'gradebook_custom_scores_student_id_fkey';
+            columns: ['student_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      gradebook_layouts: {
+        Row: {
+          class_id: string;
+          column_order: Json;
+          updated_at: string;
+        };
+        Insert: {
+          class_id: string;
+          column_order?: Json;
+          updated_at?: string;
+        };
+        Update: {
+          class_id?: string;
+          column_order?: Json;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'gradebook_layouts_class_id_fkey';
+            columns: ['class_id'];
+            isOneToOne: true;
+            referencedRelation: 'classes';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       help_requests: {
         Row: {
           assignment_id: string;
@@ -864,6 +971,102 @@ export type Database = {
         };
         Relationships: [];
       };
+      portfolio_files: {
+        Row: {
+          file_name: string;
+          folder_id: string;
+          id: string;
+          mime_type: string | null;
+          size_bytes: number | null;
+          storage_path: string;
+          student_id: string;
+          uploaded_at: string;
+        };
+        Insert: {
+          file_name: string;
+          folder_id: string;
+          id?: string;
+          mime_type?: string | null;
+          size_bytes?: number | null;
+          storage_path: string;
+          student_id: string;
+          uploaded_at?: string;
+        };
+        Update: {
+          file_name?: string;
+          folder_id?: string;
+          id?: string;
+          mime_type?: string | null;
+          size_bytes?: number | null;
+          storage_path?: string;
+          student_id?: string;
+          uploaded_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'portfolio_files_folder_id_fkey';
+            columns: ['folder_id'];
+            isOneToOne: false;
+            referencedRelation: 'portfolio_folders';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'portfolio_files_student_id_fkey';
+            columns: ['student_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      portfolio_folders: {
+        Row: {
+          class_id: string;
+          created_at: string;
+          created_by: string;
+          description: string | null;
+          id: string;
+          name: string;
+          position: number;
+          updated_at: string;
+        };
+        Insert: {
+          class_id: string;
+          created_at?: string;
+          created_by?: string;
+          description?: string | null;
+          id?: string;
+          name: string;
+          position?: number;
+          updated_at?: string;
+        };
+        Update: {
+          class_id?: string;
+          created_at?: string;
+          created_by?: string;
+          description?: string | null;
+          id?: string;
+          name?: string;
+          position?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'portfolio_folders_class_id_fkey';
+            columns: ['class_id'];
+            isOneToOne: false;
+            referencedRelation: 'classes';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'portfolio_folders_created_by_fkey';
+            columns: ['created_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       profiles: {
         Row: {
           avatar_url: string | null;
@@ -1413,3 +1616,8 @@ export type LessonLivePresence = Tables<'lesson_live_presence'>;
 export type SlideSubmission = Tables<'slide_submissions'>;
 export type LessonAiResources = Tables<'lesson_ai_resources'>;
 export type McqTaskSubmission = Tables<'mcq_task_submissions'>;
+export type GradebookCustomColumn = Tables<'gradebook_custom_columns'>;
+export type GradebookCustomScore = Tables<'gradebook_custom_scores'>;
+export type GradebookLayout = Tables<'gradebook_layouts'>;
+export type PortfolioFolder = Tables<'portfolio_folders'>;
+export type PortfolioFile = Tables<'portfolio_files'>;

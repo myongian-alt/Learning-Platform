@@ -26,6 +26,7 @@ import { useClassAssignments } from '@/hooks/queries/use-class-assignments';
 import { useClassDetail } from '@/hooks/queries/use-class-detail';
 import { useClassRoster } from '@/hooks/queries/use-class-roster';
 import { useGradebook } from '@/hooks/queries/use-gradebook';
+import { useGradebookColumns } from '@/hooks/queries/use-gradebook-columns';
 import { useLessonAttachedTasks } from '@/hooks/queries/use-lesson-attached-tasks';
 import type {
   AiTaskKind,
@@ -37,10 +38,17 @@ import type {
 import { useLessonAiResources } from '@/hooks/queries/use-lesson-ai-resources';
 import { useLessonResources } from '@/hooks/queries/use-lesson-resources';
 import { useLessonSlides } from '@/hooks/queries/use-lesson-slides';
+import { usePortfolioFiles } from '@/hooks/queries/use-portfolio-files';
+import { usePortfolioFolders } from '@/hooks/queries/use-portfolio-folders';
 import { signOut } from '@/lib/auth-actions';
 import { downloadCsv } from '@/lib/csv-export';
 import { useAuthStore } from '@/store/auth-store';
-import type { LessonFileType, LessonResource } from '@/types/database';
+import type {
+  LessonFileType,
+  LessonResource,
+  PortfolioFile,
+  PortfolioFolder,
+} from '@/types/database';
 
 const TOTAL_WEEKS = 15;
 const STORAGE_QUOTA_BYTES = 10 * 1024 * 1024 * 1024;
@@ -57,7 +65,15 @@ const FILE_TYPE_META: Record<
   link: { icon: 'link', color: '#64748b', label: 'Link' },
 };
 
-type Section = 'lessons' | 'quizzes' | 'reports' | 'gradebook' | 'students' | 'groups' | 'settings';
+type Section =
+  | 'lessons'
+  | 'quizzes'
+  | 'reports'
+  | 'gradebook'
+  | 'portfolio'
+  | 'students'
+  | 'groups'
+  | 'settings';
 
 const AI_TASK_META: Record<
   AiTaskKind,
@@ -317,6 +333,7 @@ export default function ClassLessonsScreen() {
               </>
             )}
             {section === 'gradebook' && <GradebookSection classId={classId} />}
+            {section === 'portfolio' && <PortfolioSection classId={classId} students={students} />}
             {section === 'groups' && (
               <ComingSoonSection
                 icon="people-outline"
@@ -1586,18 +1603,28 @@ function ResourceCard({
 }
 
 const GRADEBOOK_ROW_HEIGHT = 44;
+const GRADEBOOK_HEADER_HEIGHT = 60;
 const GRADEBOOK_COL_WIDTH = 108;
 const GRADEBOOK_NAME_COL_WIDTH = 168;
 
 // A real per-student x per-item spreadsheet: one column per gradable item — a slide with
-// grading turned on, or an attached custom-MCQs quiz — labeled "W{week}L{lesson} {Activity}"
-// or "W{week}L{lesson}Quiz{N}". Built from useGradebook, which is the single source of truth
-// also feeding the student's own Grades tab, so a score showing up here is guaranteed to
-// match what that student sees on their side.
+// grading turned on, an attached custom-MCQs quiz, or a teacher-added custom column —
+// labeled "W{week}L{lesson} {Activity}", "W{week}L{lesson}Quiz{N}", or whatever the teacher
+// named it. Built from useGradebook, which is the single source of truth also feeding the
+// student's own Grades tab, so a score showing up here is guaranteed to match what that
+// student sees on their side. Column order is per-class and persists (see
+// use-gradebook-columns.ts) — the left/right arrows on each header just swap it with its
+// neighbor and save the whole new order.
 function GradebookSection({ classId }: { classId: string }) {
   const gradebook = useGradebook(classId);
+  const columnActions = useGradebookColumns(classId);
   const columns = gradebook.data?.columns ?? [];
   const rows = gradebook.data?.rows ?? [];
+
+  const [addingColumn, setAddingColumn] = useState(false);
+  const [newColumnLabel, setNewColumnLabel] = useState('');
+  const [renamingColumnId, setRenamingColumnId] = useState<string | null>(null);
+  const [draftLabel, setDraftLabel] = useState('');
 
   const handleExportCsv = () => {
     const header = ['Student', ...columns.map((c) => c.label)];
@@ -1606,6 +1633,29 @@ function GradebookSection({ classId }: { classId: string }) {
       ...columns.map((c) => (row.scores[c.id] !== null ? `${row.scores[c.id]}%` : '')),
     ]);
     downloadCsv(`gradebook-${classId}.csv`, [header, ...body]);
+  };
+
+  const commitNewColumn = () => {
+    const label = newColumnLabel.trim();
+    if (label) columnActions.createColumn.mutate(label);
+    setNewColumnLabel('');
+    setAddingColumn(false);
+  };
+
+  const commitRename = () => {
+    const label = draftLabel.trim();
+    if (renamingColumnId && label) {
+      columnActions.renameColumn.mutate({ id: renamingColumnId.replace('custom:', ''), label });
+    }
+    setRenamingColumnId(null);
+  };
+
+  const moveColumn = (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= columns.length) return;
+    const order = columns.map((c) => c.id);
+    [order[index], order[targetIndex]] = [order[targetIndex], order[index]];
+    columnActions.setColumnOrder.mutate(order);
   };
 
   return (
@@ -1617,16 +1667,40 @@ function GradebookSection({ classId }: { classId: string }) {
             Every graded slide and quiz, synced live from student work.
           </Text>
         </View>
-        {columns.length > 0 && (
-          <Pressable
-            onPress={handleExportCsv}
-            accessibilityLabel="Export gradebook as CSV"
-            className="flex-row items-center gap-1.5 rounded-lg border border-black/10 bg-white px-3 py-2"
-          >
-            <Feather name="download" size={13} color="#4b5563" />
-            <Text className="text-xs font-semibold text-ink/70">Export CSV</Text>
-          </Pressable>
-        )}
+        <View className="flex-row items-center gap-2">
+          {addingColumn ? (
+            <View className="flex-row items-center gap-1.5">
+              <TextInput
+                value={newColumnLabel}
+                onChangeText={setNewColumnLabel}
+                onSubmitEditing={commitNewColumn}
+                onBlur={commitNewColumn}
+                autoFocus
+                placeholder="Column name"
+                className="w-40 rounded-lg border border-violet-300 px-2.5 py-2 text-xs text-ink"
+              />
+            </View>
+          ) : (
+            <Pressable
+              onPress={() => setAddingColumn(true)}
+              accessibilityLabel="Add gradebook column"
+              className="flex-row items-center gap-1.5 rounded-lg border border-black/10 bg-white px-3 py-2"
+            >
+              <Feather name="plus" size={13} color="#4b5563" />
+              <Text className="text-xs font-semibold text-ink/70">Add column</Text>
+            </Pressable>
+          )}
+          {columns.length > 0 && (
+            <Pressable
+              onPress={handleExportCsv}
+              accessibilityLabel="Export gradebook as CSV"
+              className="flex-row items-center gap-1.5 rounded-lg border border-black/10 bg-white px-3 py-2"
+            >
+              <Feather name="download" size={13} color="#4b5563" />
+              <Text className="text-xs font-semibold text-ink/70">Export CSV</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
 
       {gradebook.isLoading && <ActivityIndicator />}
@@ -1634,7 +1708,8 @@ function GradebookSection({ classId }: { classId: string }) {
       {!gradebook.isLoading && columns.length === 0 && (
         <View className="items-center justify-center rounded-2xl border border-dashed border-black/10 py-10">
           <Text className="text-sm text-ink/40">
-            Nothing to grade yet — turn on grading for a slide, or attach a quiz.
+            Nothing to grade yet — turn on grading for a slide, attach a quiz, or add a custom
+            column above.
           </Text>
         </View>
       )}
@@ -1643,7 +1718,7 @@ function GradebookSection({ classId }: { classId: string }) {
         <View className="flex-row overflow-hidden rounded-2xl border border-black/5 bg-white">
           <View style={{ width: GRADEBOOK_NAME_COL_WIDTH }}>
             <View
-              style={{ height: GRADEBOOK_ROW_HEIGHT }}
+              style={{ height: GRADEBOOK_HEADER_HEIGHT }}
               className="justify-center border-b border-r border-black/5 bg-black/[0.02] px-3"
             >
               <Text className="text-[10px] font-bold uppercase tracking-wide text-ink/40">
@@ -1671,47 +1746,443 @@ function GradebookSection({ classId }: { classId: string }) {
           <ScrollView horizontal showsHorizontalScrollIndicator>
             <View>
               <View className="flex-row">
-                {columns.map((col) => (
+                {columns.map((col, i) => (
                   <View
                     key={col.id}
-                    style={{ width: GRADEBOOK_COL_WIDTH, height: GRADEBOOK_ROW_HEIGHT }}
-                    className="items-center justify-center border-b border-r border-black/5 bg-black/[0.02] px-1.5"
+                    style={{ width: GRADEBOOK_COL_WIDTH, height: GRADEBOOK_HEADER_HEIGHT }}
+                    className="justify-center gap-0.5 border-b border-r border-black/5 bg-black/[0.02] px-1 py-1"
                   >
-                    <Text
-                      className="text-center text-[10px] font-bold text-ink/60"
-                      numberOfLines={2}
-                    >
-                      {col.label}
-                    </Text>
+                    <View className="flex-row items-center justify-center gap-0.5">
+                      <Pressable
+                        onPress={() => moveColumn(i, -1)}
+                        disabled={i === 0}
+                        hitSlop={4}
+                        accessibilityLabel={`Move ${col.label} left`}
+                      >
+                        <Feather name="chevron-left" size={12} color={i === 0 ? '#d1d5db' : '#6b7280'} />
+                      </Pressable>
+                      {renamingColumnId === col.id ? (
+                        <TextInput
+                          value={draftLabel}
+                          onChangeText={setDraftLabel}
+                          onSubmitEditing={commitRename}
+                          onBlur={commitRename}
+                          autoFocus
+                          className="flex-1 border-b border-violet-300 text-center text-[10px] font-bold text-ink"
+                        />
+                      ) : (
+                        <Pressable
+                          className="flex-1"
+                          disabled={col.kind !== 'custom'}
+                          onPress={() => {
+                            setRenamingColumnId(col.id);
+                            setDraftLabel(col.label);
+                          }}
+                        >
+                          <Text
+                            className="text-center text-[10px] font-bold text-ink/60"
+                            numberOfLines={2}
+                          >
+                            {col.label}
+                          </Text>
+                        </Pressable>
+                      )}
+                      <Pressable
+                        onPress={() => moveColumn(i, 1)}
+                        disabled={i === columns.length - 1}
+                        hitSlop={4}
+                        accessibilityLabel={`Move ${col.label} right`}
+                      >
+                        <Feather
+                          name="chevron-right"
+                          size={12}
+                          color={i === columns.length - 1 ? '#d1d5db' : '#6b7280'}
+                        />
+                      </Pressable>
+                    </View>
+                    {col.kind === 'custom' && (
+                      <Pressable
+                        onPress={() => columnActions.deleteColumn.mutate(col.id.replace('custom:', ''))}
+                        accessibilityLabel={`Delete ${col.label} column`}
+                        className="items-center"
+                      >
+                        <Feather name="trash-2" size={9} color="#ef4444" />
+                      </Pressable>
+                    )}
                   </View>
                 ))}
               </View>
               {rows.map((row) => (
                 <View key={row.studentId} className="flex-row">
-                  {columns.map((col) => {
-                    const score = row.scores[col.id];
-                    return (
-                      <View
-                        key={col.id}
-                        style={{ width: GRADEBOOK_COL_WIDTH, height: GRADEBOOK_ROW_HEIGHT }}
-                        className="items-center justify-center border-b border-r border-black/5"
-                      >
+                  {columns.map((col) => (
+                    <View
+                      key={col.id}
+                      style={{ width: GRADEBOOK_COL_WIDTH, height: GRADEBOOK_ROW_HEIGHT }}
+                      className="items-center justify-center border-b border-r border-black/5"
+                    >
+                      {col.kind === 'custom' ? (
+                        <CustomScoreCell
+                          key={row.scores[col.id]}
+                          value={row.scores[col.id]}
+                          onCommit={(score) =>
+                            columnActions.setScore.mutate({
+                              columnId: col.id.replace('custom:', ''),
+                              studentId: row.studentId,
+                              score,
+                            })
+                          }
+                        />
+                      ) : (
                         <Text
                           className={
-                            score !== null
+                            row.scores[col.id] !== null
                               ? 'text-xs font-bold text-ink'
                               : 'text-xs text-ink/25'
                           }
                         >
-                          {score !== null ? `${score}%` : '—'}
+                          {row.scores[col.id] !== null ? `${row.scores[col.id]}%` : '—'}
                         </Text>
-                      </View>
-                    );
-                  })}
+                      )}
+                    </View>
+                  ))}
                 </View>
               ))}
             </View>
           </ScrollView>
+        </View>
+      )}
+    </>
+  );
+}
+
+// A gradebook cell for a teacher-added custom column — free-typed, unlike the read-only
+// auto-graded cells, since there's no submission behind it to derive a score from.
+function CustomScoreCell({
+  value,
+  onCommit,
+}: {
+  value: number | null;
+  onCommit: (score: number | null) => void;
+}) {
+  const [draft, setDraft] = useState(value !== null ? String(value) : '');
+
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed === '') {
+      if (value !== null) onCommit(null);
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isNaN(parsed) && parsed !== value) onCommit(Math.max(0, Math.min(100, parsed)));
+  };
+
+  return (
+    <TextInput
+      value={draft}
+      onChangeText={setDraft}
+      onBlur={commit}
+      onSubmitEditing={commit}
+      keyboardType="numeric"
+      placeholder="—"
+      className="w-full text-center text-xs font-bold text-ink"
+    />
+  );
+}
+
+// Teacher's view of the class Portfolio: folders like "Project" or "Copybook Work" the teacher
+// creates and describes, with students uploading their own files into them (see
+// student-class-view.tsx for that side). A teacher never uploads files here themselves — only
+// name/description/order — so this screen is folder management plus a read/review roster of
+// what each student has turned in.
+function PortfolioSection({
+  classId,
+  students,
+}: {
+  classId: string;
+  students: { id: string; full_name: string }[];
+}) {
+  const foldersQuery = usePortfolioFolders(classId);
+  const folders = foldersQuery.folders;
+  const [creating, setCreating] = useState(false);
+  const [draftName, setDraftName] = useState('');
+  const [draftDescription, setDraftDescription] = useState('');
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [openFolderId, setOpenFolderId] = useState<string | null>(null);
+
+  const openFolder = folders.find((f) => f.id === openFolderId) ?? null;
+
+  const commitCreate = () => {
+    const name = draftName.trim();
+    if (name) {
+      foldersQuery.createFolder.mutate({ name, description: draftDescription.trim() || null });
+    }
+    setDraftName('');
+    setDraftDescription('');
+    setCreating(false);
+  };
+
+  if (openFolder) {
+    return (
+      <PortfolioFolderDetail
+        classId={classId}
+        folder={openFolder}
+        students={students}
+        onBack={() => setOpenFolderId(null)}
+      />
+    );
+  }
+
+  return (
+    <>
+      <View className="flex-row items-start justify-between gap-3">
+        <View>
+          <Text className="text-2xl font-bold text-ink">Portfolio</Text>
+          <Text className="text-sm text-ink/50">
+            Folders for ongoing student work — projects, copybooks, and anything else you want
+            collected over time.
+          </Text>
+        </View>
+        <Pressable
+          onPress={() => setCreating(true)}
+          accessibilityLabel="New portfolio folder"
+          className="flex-row items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 active:bg-violet-700"
+        >
+          <Feather name="folder-plus" size={13} color="#fff" />
+          <Text className="text-xs font-semibold text-white">New folder</Text>
+        </Pressable>
+      </View>
+
+      {creating && (
+        <View className="gap-2 rounded-2xl border border-violet-200 bg-violet-50/50 p-4">
+          <TextInput
+            value={draftName}
+            onChangeText={setDraftName}
+            placeholder="Folder name (e.g. Project)"
+            autoFocus
+            className="rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-ink"
+          />
+          <TextInput
+            value={draftDescription}
+            onChangeText={setDraftDescription}
+            placeholder="Description for students (optional)"
+            multiline
+            className="min-h-[60px] rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-ink"
+          />
+          <View className="flex-row justify-end gap-2">
+            <Pressable onPress={() => setCreating(false)} className="rounded-lg px-3 py-2">
+              <Text className="text-xs font-semibold text-ink/50">Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={commitCreate}
+              className="rounded-lg bg-violet-600 px-3 py-2 active:bg-violet-700"
+            >
+              <Text className="text-xs font-semibold text-white">Create</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {foldersQuery.isLoading && <ActivityIndicator />}
+
+      {!foldersQuery.isLoading && folders.length === 0 && !creating && (
+        <View className="items-center justify-center rounded-2xl border border-dashed border-black/10 py-10">
+          <Text className="text-sm text-ink/40">
+            No folders yet — create one to start collecting student work.
+          </Text>
+        </View>
+      )}
+
+      {folders.length > 0 && (
+        <View className="flex-row flex-wrap gap-3">
+          {folders.map((folder) => (
+            <View
+              key={folder.id}
+              className="w-64 gap-2 rounded-2xl border border-black/5 bg-white p-4"
+            >
+              {editingFolderId === folder.id ? (
+                <PortfolioFolderEditForm
+                  folder={folder}
+                  onCancel={() => setEditingFolderId(null)}
+                  onSave={(name, description) => {
+                    foldersQuery.renameFolder.mutate({ id: folder.id, name, description });
+                    setEditingFolderId(null);
+                  }}
+                />
+              ) : (
+                <>
+                  <View className="flex-row items-start justify-between gap-2">
+                    <View className="flex-row items-center gap-2">
+                      <Feather name="folder" size={16} color="#7c3aed" />
+                      <Text className="text-sm font-bold text-ink">{folder.name}</Text>
+                    </View>
+                    <View className="flex-row gap-2">
+                      <Pressable
+                        onPress={() => setEditingFolderId(folder.id)}
+                        accessibilityLabel={`Rename ${folder.name}`}
+                      >
+                        <Feather name="edit-2" size={13} color="#6b7280" />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => foldersQuery.deleteFolder.mutate(folder.id)}
+                        accessibilityLabel={`Delete ${folder.name}`}
+                      >
+                        <Feather name="trash-2" size={13} color="#ef4444" />
+                      </Pressable>
+                    </View>
+                  </View>
+                  {folder.description ? (
+                    <Text className="text-xs text-ink/50" numberOfLines={3}>
+                      {folder.description}
+                    </Text>
+                  ) : (
+                    <Text className="text-xs italic text-ink/30">No description</Text>
+                  )}
+                  <Pressable
+                    onPress={() => setOpenFolderId(folder.id)}
+                    className="mt-1 flex-row items-center gap-1.5 self-start rounded-lg border border-black/10 px-2.5 py-1.5"
+                  >
+                    <Text className="text-xs font-semibold text-ink/70">Open</Text>
+                    <Feather name="arrow-right" size={12} color="#4b5563" />
+                  </Pressable>
+                </>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
+    </>
+  );
+}
+
+function PortfolioFolderEditForm({
+  folder,
+  onSave,
+  onCancel,
+}: {
+  folder: PortfolioFolder;
+  onSave: (name: string, description: string | null) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(folder.name);
+  const [description, setDescription] = useState(folder.description ?? '');
+
+  return (
+    <View className="gap-2">
+      <TextInput
+        value={name}
+        onChangeText={setName}
+        autoFocus
+        className="rounded-lg border border-violet-300 px-2.5 py-2 text-sm font-bold text-ink"
+      />
+      <TextInput
+        value={description}
+        onChangeText={setDescription}
+        multiline
+        placeholder="Description for students (optional)"
+        className="min-h-[50px] rounded-lg border border-black/10 px-2.5 py-2 text-xs text-ink"
+      />
+      <View className="flex-row justify-end gap-2">
+        <Pressable onPress={onCancel} className="rounded-lg px-2.5 py-1.5">
+          <Text className="text-xs font-semibold text-ink/50">Cancel</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => name.trim() && onSave(name.trim(), description.trim() || null)}
+          className="rounded-lg bg-violet-600 px-2.5 py-1.5 active:bg-violet-700"
+        >
+          <Text className="text-xs font-semibold text-white">Save</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+// A folder's contents from the teacher's side: every student on the roster, and whatever files
+// each has uploaded so far — teachers only review/download/delete here, they never upload
+// (uploading is student-only, matching the folder's purpose as a submission box).
+function PortfolioFolderDetail({
+  classId: _classId,
+  folder,
+  students,
+  onBack,
+}: {
+  classId: string;
+  folder: PortfolioFolder;
+  students: { id: string; full_name: string }[];
+  onBack: () => void;
+}) {
+  const filesQuery = usePortfolioFiles(_classId, folder.id);
+  const files = filesQuery.files;
+
+  const filesByStudent = new Map<string, PortfolioFile[]>();
+  for (const file of files) {
+    const list = filesByStudent.get(file.student_id) ?? [];
+    list.push(file);
+    filesByStudent.set(file.student_id, list);
+  }
+
+  const openFile = async (file: PortfolioFile) => {
+    const url = await filesQuery.getDownloadUrl(file);
+    Linking.openURL(url);
+  };
+
+  return (
+    <>
+      <Pressable onPress={onBack} className="flex-row items-center gap-1.5 self-start">
+        <Feather name="arrow-left" size={14} color="#6b7280" />
+        <Text className="text-xs font-semibold text-ink/60">Back to Portfolio</Text>
+      </Pressable>
+
+      <View>
+        <Text className="text-2xl font-bold text-ink">{folder.name}</Text>
+        {folder.description && <Text className="text-sm text-ink/50">{folder.description}</Text>}
+      </View>
+
+      {filesQuery.isLoading && <ActivityIndicator />}
+
+      {!filesQuery.isLoading && (
+        <View className="gap-3">
+          {students.length === 0 && (
+            <Text className="text-sm text-ink/40">No students have joined yet.</Text>
+          )}
+          {students.map((student) => {
+            const studentFiles = filesByStudent.get(student.id) ?? [];
+            return (
+              <View
+                key={student.id}
+                className="gap-2 rounded-2xl border border-black/5 bg-white p-4"
+              >
+                <Text className="text-sm font-bold text-ink">{student.full_name}</Text>
+                {studentFiles.length === 0 ? (
+                  <Text className="text-xs italic text-ink/30">No files uploaded yet</Text>
+                ) : (
+                  <View className="gap-1.5">
+                    {studentFiles.map((file) => (
+                      <View
+                        key={file.id}
+                        className="flex-row items-center justify-between gap-2 rounded-lg border border-black/5 bg-black/[0.02] px-3 py-2"
+                      >
+                        <Pressable
+                          onPress={() => openFile(file)}
+                          className="flex-1 flex-row items-center gap-2"
+                        >
+                          <Feather name="file" size={13} color="#6b7280" />
+                          <Text className="flex-1 text-xs text-ink" numberOfLines={1}>
+                            {file.file_name}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => filesQuery.deleteFile.mutate(file)}
+                          accessibilityLabel={`Delete ${file.file_name}`}
+                        >
+                          <Feather name="trash-2" size={13} color="#ef4444" />
+                        </Pressable>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            );
+          })}
         </View>
       )}
     </>

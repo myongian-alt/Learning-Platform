@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from 'react-native';
@@ -16,10 +17,12 @@ import type {
 } from '@/hooks/queries/use-lesson-ai-resources';
 import { useLessonResources } from '@/hooks/queries/use-lesson-resources';
 import { useMcqTaskSubmissions } from '@/hooks/queries/use-mcq-task-submission';
+import { usePortfolioFiles } from '@/hooks/queries/use-portfolio-files';
+import { usePortfolioFolders } from '@/hooks/queries/use-portfolio-folders';
 import { useWeekActivities, type WeekActivity } from '@/hooks/queries/use-week-activities';
 import { useWeekAttachedTasks, type WeekAttachedTask } from '@/hooks/queries/use-week-attached-tasks';
 import { useAuthStore } from '@/store/auth-store';
-import type { LessonFileType, LessonResource } from '@/types/database';
+import type { LessonFileType, LessonResource, PortfolioFolder } from '@/types/database';
 
 const AI_TASK_META: Record<
   WeekAttachedTask['kind'],
@@ -60,6 +63,7 @@ export function StudentClassView({ classId }: { classId: string }) {
   const { resources, isLoading } = useLessonResources(classId);
   const weekProgress = useClassWeekProgress(classId, studentId ?? null);
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
+  const [view, setView] = useState<'lessons' | 'portfolio'>('lessons');
   const [viewing, setViewing] = useState<{ resource: LessonResource; startIndex: number } | null>(
     null,
   );
@@ -110,22 +114,49 @@ export function StudentClassView({ classId }: { classId: string }) {
     <View className="flex-1 bg-lf-canvas" style={{ paddingTop: insets.top }}>
       <View className="flex-row items-center gap-3 border-b border-lf-line bg-white px-5 py-4">
         <Pressable
-          onPress={() => (selectedWeek !== null ? setSelectedWeek(null) : router.back())}
+          onPress={() => {
+            if (selectedWeek !== null) return setSelectedWeek(null);
+            if (view === 'portfolio') return setView('lessons');
+            router.back();
+          }}
           className="h-8 w-8 items-center justify-center rounded-lg active:bg-black/5"
         >
           <Feather name="chevron-left" size={18} color="#4b5563" />
         </Pressable>
         <View className="flex-1">
           <Text className="text-lg font-bold text-lf-ink">
-            {selectedWeek !== null ? `Week ${selectedWeek}` : (classQuery.data?.name ?? 'Class')}
+            {selectedWeek !== null
+              ? `Week ${selectedWeek}`
+              : view === 'portfolio'
+                ? 'Portfolio'
+                : (classQuery.data?.name ?? 'Class')}
           </Text>
-          {selectedWeek !== null && (
+          {(selectedWeek !== null || view === 'portfolio') && (
             <Text className="text-xs text-lf-muted">{classQuery.data?.name}</Text>
           )}
         </View>
+        {selectedWeek === null && (
+          <View className="flex-row rounded-lg bg-lf-canvas p-0.5">
+            {(['lessons', 'portfolio'] as const).map((key) => (
+              <Pressable
+                key={key}
+                onPress={() => setView(key)}
+                className={`rounded-md px-3 py-1.5 ${view === key ? 'bg-white shadow-sm' : ''}`}
+              >
+                <Text
+                  className={`text-xs font-semibold ${view === key ? 'text-lf-ink' : 'text-lf-muted'}`}
+                >
+                  {key === 'lessons' ? 'Lessons' : 'Portfolio'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
       </View>
 
-      {selectedWeek === null ? (
+      {view === 'portfolio' ? (
+        <StudentPortfolioView classId={classId} studentId={studentId ?? null} />
+      ) : selectedWeek === null ? (
         <ScrollView contentContainerClassName="gap-3 p-5">
           {isLoading && <ActivityIndicator />}
           <View className="flex-row flex-wrap gap-3">
@@ -349,5 +380,156 @@ export function StudentClassView({ classId }: { classId: string }) {
         />
       )}
     </View>
+  );
+}
+
+// A student's side of the Portfolio: the same folders the teacher created, read-only (RLS
+// already enforces that — this component just never renders a rename/delete affordance), plus
+// the ability to upload files into a folder and see only their own uploads there — other
+// students' files never come back from the query, since RLS scopes portfolio_files reads to
+// student_id = auth.uid() for a student caller.
+function StudentPortfolioView({
+  classId,
+  studentId,
+}: {
+  classId: string;
+  studentId: string | null;
+}) {
+  const foldersQuery = usePortfolioFolders(classId);
+  const [openFolderId, setOpenFolderId] = useState<string | null>(null);
+  const openFolder = foldersQuery.folders.find((f) => f.id === openFolderId) ?? null;
+
+  if (openFolder && studentId) {
+    return (
+      <StudentPortfolioFolder
+        classId={classId}
+        folder={openFolder}
+        studentId={studentId}
+        onBack={() => setOpenFolderId(null)}
+      />
+    );
+  }
+
+  return (
+    <ScrollView contentContainerClassName="gap-3 p-5">
+      {foldersQuery.isLoading && <ActivityIndicator />}
+      {!foldersQuery.isLoading && foldersQuery.folders.length === 0 && (
+        <Text className="text-sm text-lf-muted">
+          Nothing here yet — your teacher hasn&apos;t created any folders.
+        </Text>
+      )}
+      {foldersQuery.folders.map((folder) => (
+        <Pressable
+          key={folder.id}
+          onPress={() => setOpenFolderId(folder.id)}
+          className="flex-row items-center gap-3 rounded-xl bg-white p-3.5 shadow-sm"
+        >
+          <Feather name="folder" size={16} color="#7c3aed" />
+          <View className="flex-1 gap-0.5">
+            <Text className="text-sm font-semibold text-lf-ink" numberOfLines={1}>
+              {folder.name}
+            </Text>
+            {folder.description && (
+              <Text className="text-xs text-lf-muted" numberOfLines={1}>
+                {folder.description}
+              </Text>
+            )}
+          </View>
+          <Feather name="chevron-right" size={16} color="#9ca3af" />
+        </Pressable>
+      ))}
+    </ScrollView>
+  );
+}
+
+function StudentPortfolioFolder({
+  classId: _classId,
+  folder,
+  studentId,
+  onBack,
+}: {
+  classId: string;
+  folder: PortfolioFolder;
+  studentId: string;
+  onBack: () => void;
+}) {
+  const filesQuery = usePortfolioFiles(_classId, folder.id);
+  const myFiles = filesQuery.files.filter((f) => f.student_id === studentId);
+
+  const handleUpload = async () => {
+    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: false });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    filesQuery.uploadFile.mutate({
+      studentId,
+      uri: asset.uri,
+      filename: asset.name,
+      mimeType: asset.mimeType ?? null,
+      size: asset.size ?? null,
+    });
+  };
+
+  const openFile = async (fileId: string) => {
+    const file = myFiles.find((f) => f.id === fileId);
+    if (!file) return;
+    const url = await filesQuery.getDownloadUrl(file);
+    Linking.openURL(url);
+  };
+
+  return (
+    <ScrollView contentContainerClassName="gap-4 p-5">
+      <Pressable onPress={onBack} className="flex-row items-center gap-1.5 self-start">
+        <Feather name="arrow-left" size={14} color="#6b7280" />
+        <Text className="text-xs font-semibold text-lf-muted">Back to Portfolio</Text>
+      </Pressable>
+
+      <View className="gap-1">
+        <Text className="text-lg font-bold text-lf-ink">{folder.name}</Text>
+        {folder.description && <Text className="text-sm text-lf-muted">{folder.description}</Text>}
+      </View>
+
+      <Pressable
+        onPress={handleUpload}
+        disabled={filesQuery.uploadFile.isPending}
+        className="flex-row items-center justify-center gap-2 rounded-xl border border-dashed border-lf-line bg-white p-4"
+      >
+        <Feather name="upload" size={15} color="#7c3aed" />
+        <Text className="text-sm font-semibold text-violet-700">
+          {filesQuery.uploadFile.isPending ? 'Uploading…' : 'Upload a file'}
+        </Text>
+      </Pressable>
+
+      <View className="gap-2">
+        <Text className="text-xs font-bold uppercase tracking-wide text-lf-muted3">
+          My uploads
+        </Text>
+        {filesQuery.isLoading && <ActivityIndicator />}
+        {!filesQuery.isLoading && myFiles.length === 0 && (
+          <Text className="text-sm text-lf-muted">You haven&apos;t uploaded anything yet.</Text>
+        )}
+        {myFiles.map((file) => (
+          <View
+            key={file.id}
+            className="flex-row items-center justify-between gap-2 rounded-xl bg-white p-3.5 shadow-sm"
+          >
+            <Pressable
+              onPress={() => openFile(file.id)}
+              className="flex-1 flex-row items-center gap-2.5"
+            >
+              <Feather name="file" size={15} color="#6b7280" />
+              <Text className="flex-1 text-sm text-lf-ink" numberOfLines={1}>
+                {file.file_name}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => filesQuery.deleteFile.mutate(file)}
+              accessibilityLabel={`Delete ${file.file_name}`}
+            >
+              <Feather name="trash-2" size={14} color="#ef4444" />
+            </Pressable>
+          </View>
+        ))}
+      </View>
+    </ScrollView>
   );
 }
