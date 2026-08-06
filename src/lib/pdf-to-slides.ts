@@ -35,7 +35,10 @@ export async function renderPdfToSlides(fileBlob: Blob): Promise<RenderedSlide[]
   const slides: RenderedSlide[] = [];
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
     const page = await pdf.getPage(pageNumber);
-    const viewport = page.getViewport({ scale: 1.5 });
+    // 2.5x renders at a high enough native resolution that the slide viewer (which now
+    // scales the image up to fill the available screen, unconstrained) doesn't visibly blur
+    // on large monitors.
+    const viewport = page.getViewport({ scale: 2.5 });
 
     const canvas = document.createElement('canvas');
     canvas.width = viewport.width;

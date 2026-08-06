@@ -24,6 +24,7 @@ import { SLIDE_TAGS, SlideViewerModal } from '@/components/slides/slide-viewer';
 import { useClassAssignments } from '@/hooks/queries/use-class-assignments';
 import { useClassDetail } from '@/hooks/queries/use-class-detail';
 import { useClassRoster } from '@/hooks/queries/use-class-roster';
+import { useGradebook } from '@/hooks/queries/use-gradebook';
 import { useLessonAttachedTasks } from '@/hooks/queries/use-lesson-attached-tasks';
 import type {
   AiTaskKind,
@@ -302,13 +303,7 @@ export default function ClassLessonsScreen() {
                 description="Interactive quizzes, polls, and game-based review are on the roadmap."
               />
             )}
-            {section === 'gradebook' && (
-              <ComingSoonSection
-                icon="stats-chart-outline"
-                title="Gradebook"
-                description="Per-student grade tracking and export is on the roadmap."
-              />
-            )}
+            {section === 'gradebook' && <GradebookSection classId={classId} />}
             {section === 'groups' && (
               <ComingSoonSection
                 icon="people-outline"
@@ -550,7 +545,7 @@ function OpenWeekView({
           <Text className="text-sm text-ink/40">No lessons in Week {week} yet.</Text>
         </View>
       ) : (
-        <View className="gap-4">
+        <View className="gap-5">
           {lessons.map((lesson) =>
             lesson.file_type === 'pdf' || lesson.file_type === 'image' ? (
               <SlideThumbnailGroup
@@ -814,7 +809,7 @@ function SlideThumbnailGroup({
   }
 
   return (
-    <View className="gap-3 rounded-2xl border border-black/5 bg-white p-4">
+    <View className="gap-3 rounded-2xl border border-black/15 bg-white p-4 shadow-sm">
       <View className="flex-row items-center justify-between">
         <Pressable
           onPress={() => setRenaming(true)}
@@ -1084,7 +1079,7 @@ function FileCard({
         : meta.label;
 
   return (
-    <View className="w-56 gap-2 rounded-2xl border border-black/5 bg-white p-4">
+    <View className="w-56 gap-2 rounded-2xl border border-black/15 bg-white p-4 shadow-sm">
       <Pressable
         onPress={() => viewable && actions.onOpen(resource)}
         disabled={!viewable}
@@ -1574,6 +1569,118 @@ function ResourceCard({
         </Text>
       </Pressable>
     </View>
+  );
+}
+
+const GRADEBOOK_ROW_HEIGHT = 44;
+const GRADEBOOK_COL_WIDTH = 108;
+const GRADEBOOK_NAME_COL_WIDTH = 168;
+
+// A real per-student x per-item spreadsheet: one column per gradable item — a slide with
+// grading turned on, or an attached custom-MCQs quiz — labeled "W{week}L{lesson} {Activity}"
+// or "W{week}L{lesson}Quiz{N}". Built from useGradebook, which is the single source of truth
+// also feeding the student's own Grades tab, so a score showing up here is guaranteed to
+// match what that student sees on their side.
+function GradebookSection({ classId }: { classId: string }) {
+  const gradebook = useGradebook(classId);
+  const columns = gradebook.data?.columns ?? [];
+  const rows = gradebook.data?.rows ?? [];
+
+  return (
+    <>
+      <View>
+        <Text className="text-2xl font-bold text-ink">Gradebook</Text>
+        <Text className="text-sm text-ink/50">
+          Every graded slide and quiz, synced live from student work.
+        </Text>
+      </View>
+
+      {gradebook.isLoading && <ActivityIndicator />}
+
+      {!gradebook.isLoading && columns.length === 0 && (
+        <View className="items-center justify-center rounded-2xl border border-dashed border-black/10 py-10">
+          <Text className="text-sm text-ink/40">
+            Nothing to grade yet — turn on grading for a slide, or attach a quiz.
+          </Text>
+        </View>
+      )}
+
+      {!gradebook.isLoading && columns.length > 0 && (
+        <View className="flex-row overflow-hidden rounded-2xl border border-black/5 bg-white">
+          <View style={{ width: GRADEBOOK_NAME_COL_WIDTH }}>
+            <View
+              style={{ height: GRADEBOOK_ROW_HEIGHT }}
+              className="justify-center border-b border-r border-black/5 bg-black/[0.02] px-3"
+            >
+              <Text className="text-[10px] font-bold uppercase tracking-wide text-ink/40">
+                Student
+              </Text>
+            </View>
+            {rows.length === 0 && (
+              <View style={{ height: GRADEBOOK_ROW_HEIGHT }} className="justify-center px-3">
+                <Text className="text-xs text-ink/40">No students yet</Text>
+              </View>
+            )}
+            {rows.map((row) => (
+              <View
+                key={row.studentId}
+                style={{ height: GRADEBOOK_ROW_HEIGHT }}
+                className="justify-center border-b border-r border-black/5 px-3"
+              >
+                <Text className="text-xs font-semibold text-ink" numberOfLines={1}>
+                  {row.studentName}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator>
+            <View>
+              <View className="flex-row">
+                {columns.map((col) => (
+                  <View
+                    key={col.id}
+                    style={{ width: GRADEBOOK_COL_WIDTH, height: GRADEBOOK_ROW_HEIGHT }}
+                    className="items-center justify-center border-b border-r border-black/5 bg-black/[0.02] px-1.5"
+                  >
+                    <Text
+                      className="text-center text-[10px] font-bold text-ink/60"
+                      numberOfLines={2}
+                    >
+                      {col.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              {rows.map((row) => (
+                <View key={row.studentId} className="flex-row">
+                  {columns.map((col) => {
+                    const score = row.scores[col.id];
+                    return (
+                      <View
+                        key={col.id}
+                        style={{ width: GRADEBOOK_COL_WIDTH, height: GRADEBOOK_ROW_HEIGHT }}
+                        className="items-center justify-center border-b border-r border-black/5"
+                      >
+                        <Text
+                          className={
+                            score !== null
+                              ? 'text-xs font-bold text-ink'
+                              : 'text-xs text-ink/25'
+                          }
+                        >
+                          {score !== null ? `${score}%` : '—'}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      )}
+    </>
   );
 }
 

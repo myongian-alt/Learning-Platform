@@ -108,15 +108,18 @@ export function useLessonSlides(resourceId: string | null) {
       activityTag?: SlideActivityTag | null;
       durationMinutes?: number | null;
       submissionsEnabled?: boolean;
+      gradingEnabled?: boolean;
     }) => {
       const patch: {
         activity_tag?: SlideActivityTag | null;
         duration_minutes?: number | null;
         submissions_enabled?: boolean;
+        grading_enabled?: boolean;
       } = {};
       if ('activityTag' in input) patch.activity_tag = input.activityTag;
       if ('durationMinutes' in input) patch.duration_minutes = input.durationMinutes;
       if ('submissionsEnabled' in input) patch.submissions_enabled = input.submissionsEnabled;
+      if ('gradingEnabled' in input) patch.grading_enabled = input.gradingEnabled;
 
       const { error } = await supabase.from('lesson_slides').update(patch).eq('id', input.id);
       if (error) throw error;

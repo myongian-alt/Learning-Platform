@@ -1,17 +1,34 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { McqTaskQuizModal } from '@/components/class/mcq-task-quiz';
 import { WeekFolderCard } from '@/components/lessons/week-folder';
 import { SLIDE_TAGS, SlideViewerModal } from '@/components/slides/slide-viewer';
 import { useClassDetail } from '@/hooks/queries/use-class-detail';
 import { useClassWeekProgress } from '@/hooks/queries/use-class-week-progress';
+import type {
+  KhanAcademyResource,
+  McqQuestion,
+  QuizizzResource,
+} from '@/hooks/queries/use-lesson-ai-resources';
 import { useLessonResources } from '@/hooks/queries/use-lesson-resources';
+import { useMcqTaskSubmissions } from '@/hooks/queries/use-mcq-task-submission';
 import { useWeekActivities, type WeekActivity } from '@/hooks/queries/use-week-activities';
+import { useWeekAttachedTasks, type WeekAttachedTask } from '@/hooks/queries/use-week-attached-tasks';
 import { useAuthStore } from '@/store/auth-store';
 import type { LessonFileType, LessonResource } from '@/types/database';
+
+const AI_TASK_META: Record<
+  WeekAttachedTask['kind'],
+  { label: string; color: string; bg: string; icon: keyof typeof Feather.glyphMap }
+> = {
+  khan_academy_video: { label: 'Khan Academy', color: '#059669', bg: '#ECFDF5', icon: 'play-circle' },
+  quizizz_quiz: { label: 'Quizizz', color: '#7C3AED', bg: '#F5F3FF', icon: 'activity' },
+  custom_mcqs: { label: 'Quiz', color: '#B45309', bg: '#FFFBEB', icon: 'help-circle' },
+};
 
 const TOTAL_WEEKS = 15;
 
@@ -54,6 +71,22 @@ export function StudentClassView({ classId }: { classId: string }) {
   const weekResourceIds = useMemo(() => weekResources.map((r) => r.id), [weekResources]);
   const activities = useWeekActivities(weekResourceIds, studentId ?? null);
   const resourceById = useMemo(() => new Map(resources.map((r) => [r.id, r])), [resources]);
+
+  const attachedTasks = useWeekAttachedTasks(weekResourceIds);
+  const mcqTaskIds = useMemo(
+    () => (attachedTasks.data ?? []).filter((t) => t.kind === 'custom_mcqs').map((t) => t.id),
+    [attachedTasks.data],
+  );
+  const mcqSubmissions = useMcqTaskSubmissions(mcqTaskIds);
+  const mcqSubmissionByTask = useMemo(
+    () => new Map((mcqSubmissions.data ?? []).map((s) => [s.task_id, s])),
+    [mcqSubmissions.data],
+  );
+  const [takingQuiz, setTakingQuiz] = useState<{
+    taskId: string;
+    title: string;
+    mcqs: McqQuestion[];
+  } | null>(null);
 
   if (viewing && studentId) {
     return (
@@ -209,7 +242,111 @@ export function StudentClassView({ classId }: { classId: string }) {
               );
             })}
           </View>
+
+          <View className="gap-2">
+            <Text className="text-xs font-bold uppercase tracking-wide text-lf-muted3">
+              Additional resources
+            </Text>
+            {attachedTasks.isLoading && <ActivityIndicator />}
+            {!attachedTasks.isLoading && (attachedTasks.data?.length ?? 0) === 0 && (
+              <Text className="text-sm text-lf-muted">Nothing posted yet.</Text>
+            )}
+            {attachedTasks.data?.map((task) => {
+              const meta = AI_TASK_META[task.kind];
+              const resource = resourceById.get(task.resourceId);
+
+              if (task.kind === 'khan_academy_video') {
+                const video = task.content as KhanAcademyResource;
+                return (
+                  <Pressable
+                    key={task.id}
+                    onPress={() => Linking.openURL(video.url)}
+                    className="flex-row items-center gap-3 rounded-xl bg-white p-3.5 shadow-sm"
+                  >
+                    <Feather name={meta.icon} size={16} color={meta.color} />
+                    <View className="flex-1 gap-0.5">
+                      <Text className="text-sm font-semibold text-lf-ink" numberOfLines={1}>
+                        {video.title}
+                      </Text>
+                      <Text className="text-xs text-lf-muted" numberOfLines={1}>
+                        {resource?.title} · Khan Academy video
+                      </Text>
+                    </View>
+                    <Feather name="external-link" size={14} color="#9ca3af" />
+                  </Pressable>
+                );
+              }
+
+              if (task.kind === 'quizizz_quiz') {
+                const quizizz = task.content as QuizizzResource;
+                return (
+                  <Pressable
+                    key={task.id}
+                    onPress={() => Linking.openURL(quizizz.url)}
+                    className="flex-row items-center gap-3 rounded-xl bg-white p-3.5 shadow-sm"
+                  >
+                    <Feather name={meta.icon} size={16} color={meta.color} />
+                    <View className="flex-1 gap-0.5">
+                      <Text className="text-sm font-semibold text-lf-ink" numberOfLines={1}>
+                        {quizizz.title}
+                      </Text>
+                      <Text className="text-xs text-lf-muted" numberOfLines={1}>
+                        {resource?.title} · Quizizz · {quizizz.questionCount} questions
+                      </Text>
+                    </View>
+                    <Feather name="external-link" size={14} color="#9ca3af" />
+                  </Pressable>
+                );
+              }
+
+              const mcqs = task.content as McqQuestion[];
+              const mySubmission = mcqSubmissionByTask.get(task.id);
+              const completed = Boolean(mySubmission?.submitted_at);
+              return (
+                <Pressable
+                  key={task.id}
+                  onPress={() =>
+                    setTakingQuiz({
+                      taskId: task.id,
+                      title: `${resource?.title ?? 'Quiz'} · Quiz${task.quizNumber ?? 1}`,
+                      mcqs,
+                    })
+                  }
+                  className="flex-row items-center gap-3 rounded-xl bg-white p-3.5 shadow-sm"
+                >
+                  <Feather name={meta.icon} size={16} color={meta.color} />
+                  <View className="flex-1 gap-0.5">
+                    <Text className="text-sm font-semibold text-lf-ink" numberOfLines={1}>
+                      {resource?.title} · Quiz{task.quizNumber ?? 1}
+                    </Text>
+                    <Text className="text-xs text-lf-muted">{mcqs.length} questions</Text>
+                  </View>
+                  <View
+                    className="rounded-full px-2.5 py-1"
+                    style={{ backgroundColor: completed ? '#0596691A' : '#9C98B41A' }}
+                  >
+                    <Text
+                      className="text-[11px] font-bold"
+                      style={{ color: completed ? '#059669' : '#9C98B4' }}
+                    >
+                      {completed ? `${mySubmission!.score}%` : 'Take quiz'}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
         </ScrollView>
+      )}
+
+      {takingQuiz && studentId && (
+        <McqTaskQuizModal
+          taskId={takingQuiz.taskId}
+          studentId={studentId}
+          title={takingQuiz.title}
+          mcqs={takingQuiz.mcqs}
+          onClose={() => setTakingQuiz(null)}
+        />
       )}
     </View>
   );

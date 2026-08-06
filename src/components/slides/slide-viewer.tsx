@@ -257,6 +257,35 @@ function SlideStage({
   const [pending, setPending] = useState<PendingObjectSpec | null>(null);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+  // The slide's actual pixel dimensions, once its image has loaded — lets the stage size
+  // itself to fill the full available width (rather than shrinking to fit the shorter of
+  // width/height), so a portrait or tall slide displays at full width and simply scrolls
+  // for the rest instead of shrinking down to fit entirely on screen. Loaded via a plain
+  // browser Image rather than the RN <Image>'s onLoad — react-native-web forwards the raw
+  // DOM load event there instead of the `{ source: { width, height } }` shape RN's own types
+  // promise, so naturalWidth/naturalHeight aren't reliably reachable off it.
+  const [loadedImgDims, setLoadedImgDims] = useState<{
+    url: string;
+    width: number;
+    height: number;
+  } | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !slide?.url) return;
+    const url = slide.url;
+    let cancelled = false;
+    const probe = new window.Image();
+    probe.onload = () => {
+      if (!cancelled) setLoadedImgDims({ url, width: probe.naturalWidth, height: probe.naturalHeight });
+    };
+    probe.src = url;
+    return () => {
+      cancelled = true;
+    };
+  }, [slide?.url]);
+  // Discard the previous slide's dimensions once the url has moved on, rather than
+  // resetting state directly in the effect above — avoids applying a stale aspect ratio to
+  // the wrong slide while its own probe is still loading.
+  const imgDims = loadedImgDims?.url === slide?.url ? loadedImgDims : null;
   const canvasRef = useRef<SlideCanvasHandle>(null);
   const scrollRef = useRef<View>(null);
   // Set right before a zoom change, read by the effect below once the resized content has
@@ -475,6 +504,29 @@ function SlideStage({
     </Pressable>
   );
 
+  // Independent from submissionsEnabled: a slide can accept student work without the
+  // teacher ever intending to score it (e.g. a warm-up). Off by default per-slide — the
+  // teacher opts in only for slides that should actually be graded.
+  const teacherGradingToggle = isTeacher && slide && (
+    <Pressable
+      onPress={() => updateSlide.mutate({ id: slide.id, gradingEnabled: !slide.grading_enabled })}
+      className={`flex-row items-center gap-1.5 rounded-full px-2.5 py-1.5 ${
+        slide.grading_enabled ? 'bg-violet-50' : 'bg-black/[0.03]'
+      }`}
+    >
+      <Feather
+        name={slide.grading_enabled ? 'toggle-right' : 'toggle-left'}
+        size={16}
+        color={slide.grading_enabled ? '#7c3aed' : '#9ca3af'}
+      />
+      <Text
+        className={`text-xs font-medium ${slide.grading_enabled ? 'text-violet-700' : 'text-ink/50'}`}
+      >
+        {slide.grading_enabled ? 'Grading on' : 'Grading off'}
+      </Text>
+    </Pressable>
+  );
+
   // Read-only, for context while presenting/viewing — the only place pacing is *set* is the
   // teacher's bulk-select on the slide-thumbnail grid (`SlideThumbnailGroup`), not here.
   const pacingBadge = slide?.pacing_mode === 'teacher_paced' && (
@@ -573,12 +625,30 @@ function SlideStage({
     </View>
   );
 
+  // The stage always fills the available width at 100% zoom; its height instead follows
+  // the slide's own aspect ratio once known, so the slide displays at full width even when
+  // that makes it taller than the visible window — the surrounding stage is scrollable, so
+  // the rest is just a scroll away rather than the whole slide shrinking down to fit.
+  const stagePaddingX = fullscreen ? 16 : 32;
+  const stagePaddingTop = fullscreen ? 8 : 12;
+  const stagePaddingBottom = fullscreen ? 24 : 44;
+  const zoomedStageWidth = Math.max(stageSize.width, stageSize.width * zoom);
+  const fitWidthStageHeight = imgDims
+    ? ((zoomedStageWidth - stagePaddingX * 2) / imgDims.width) * imgDims.height +
+      stagePaddingTop +
+      stagePaddingBottom
+    : null;
+  const zoomedStageHeight =
+    fitWidthStageHeight !== null
+      ? Math.max(stageSize.height, fitWidthStageHeight)
+      : Math.max(stageSize.height, stageSize.height * zoom);
+
   return (
     <>
       {/* Header: back, title, tag (collapsed to a single pill once set), timer. Hidden in
           fullscreen — its pieces reappear as floating overlays on the stage instead. */}
       {!fullscreen && (
-        <View className="z-20 flex-row items-center justify-between border-b border-black/5 bg-white px-5 py-2">
+        <View className="z-20 flex-row items-center justify-between bg-white px-5 py-2">
           <View className="flex-1 flex-row flex-wrap items-center gap-2">
             <Pressable
               onPress={onClose}
@@ -592,8 +662,6 @@ function SlideStage({
             </Text>
             {tagRow}
             {pacingBadge}
-            {teacherSubmissionsToggle}
-            {isTeacher && <GradingPanel submissions={submissions} />}
             {liveTag}
             {liveToggle}
           </View>
@@ -602,17 +670,26 @@ function SlideStage({
             {blanksButton}
             {quizButton}
             {studentSubmitButton}
-            {slide && (
-              <SlideTimer
-                key={slide.id}
-                durationMinutes={slide.duration_minutes}
-                editable={isTeacher}
-                onChangeDuration={(minutes) =>
-                  updateSlide.mutate({ id: slide.id, durationMinutes: minutes || null })
-                }
-              />
-            )}
           </View>
+        </View>
+      )}
+
+      {!fullscreen && slide && (
+        <View className="z-10 flex-row items-center justify-between border-b border-black/5 bg-white px-5 pb-2">
+          <View className="flex-1 flex-row flex-wrap items-center gap-2">
+            {teacherSubmissionsToggle}
+            {teacherGradingToggle}
+            {isTeacher && slide.grading_enabled && <GradingPanel submissions={submissions} />}
+          </View>
+
+          <SlideTimer
+            key={slide.id}
+            durationMinutes={slide.duration_minutes}
+            editable={isTeacher}
+            onChangeDuration={(minutes) =>
+              updateSlide.mutate({ id: slide.id, durationMinutes: minutes || null })
+            }
+          />
         </View>
       )}
 
@@ -663,19 +740,27 @@ function SlideStage({
         {slide && stageSize.width > 0 && (
           <View
             style={{
-              width: Math.max(stageSize.width, stageSize.width * zoom),
-              height: Math.max(stageSize.height, stageSize.height * zoom),
+              width: zoomedStageWidth,
+              height: zoomedStageHeight,
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <View style={{ width: '100%', height: '100%', padding: fullscreen ? 14 : 18 }}>
+            <View
+              style={{
+                width: '100%',
+                height: '100%',
+                paddingLeft: stagePaddingX,
+                paddingRight: stagePaddingX,
+                paddingTop: stagePaddingTop,
+                paddingBottom: stagePaddingBottom,
+              }}
+            >
               <View className="flex-1 items-center justify-center">
                 <View
                   style={{
                     width: '100%',
                     height: '100%',
-                    maxWidth: 1100,
                     backgroundColor: tag ? `${tag.color}0d` : '#fff',
                   }}
                   className="overflow-hidden rounded-2xl shadow-sm"
@@ -773,7 +858,8 @@ function SlideStage({
               )}
               {pacingBadge}
               {teacherSubmissionsToggle}
-              {isTeacher && <GradingPanel submissions={submissions} />}
+              {teacherGradingToggle}
+              {isTeacher && slide?.grading_enabled && <GradingPanel submissions={submissions} />}
               {liveTag}
               {liveToggle}
             </View>

@@ -119,7 +119,7 @@ export function useStudentDashboard() {
         resourceIds.length > 0
           ? await supabase
               .from('lesson_slides')
-              .select('id, resource_id, submissions_enabled, objects')
+              .select('id, resource_id, submissions_enabled, grading_enabled, objects')
               .in('resource_id', resourceIds)
               .eq('submissions_enabled', true)
           : { data: [], error: null };
@@ -157,14 +157,16 @@ export function useStudentDashboard() {
           submittedDates.push(submission!.submitted_at!);
           submittedHours.push(new Date(submission!.submitted_at!).getHours());
 
-          if (submission!.grade !== null && submission!.grade !== undefined) {
-            scores.push(submission!.grade);
-          } else {
-            const auto = autoGradeSlide(
-              (slide.objects ?? []) as unknown as SlideObject[],
-              (submission!.answers ?? {}) as unknown as SlideAnswers,
-            );
-            if (auto) scores.push(auto.percent);
+          if (slide.grading_enabled) {
+            if (submission!.grade !== null && submission!.grade !== undefined) {
+              scores.push(submission!.grade);
+            } else {
+              const auto = autoGradeSlide(
+                (slide.objects ?? []) as unknown as SlideObject[],
+                (submission!.answers ?? {}) as unknown as SlideAnswers,
+              );
+              if (auto) scores.push(auto.percent);
+            }
           }
         } else {
           dueSoon.push({

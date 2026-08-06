@@ -25,7 +25,7 @@ export function useWeekActivities(resourceIds: string[], studentId: string | nul
     queryFn: async (): Promise<WeekActivity[]> => {
       const { data: allSlides, error } = await supabase
         .from('lesson_slides')
-        .select('id, resource_id, position, activity_tag, submissions_enabled')
+        .select('id, resource_id, position, activity_tag, submissions_enabled, grading_enabled')
         .in('resource_id', resourceIds);
       if (error) throw error;
 
@@ -63,7 +63,7 @@ export function useWeekActivities(resourceIds: string[], studentId: string | nul
           ),
           activityTag: slide.activity_tag,
           submitted: Boolean(submission?.submitted_at),
-          grade: submission?.grade ?? null,
+          grade: slide.grading_enabled ? (submission?.grade ?? null) : null,
         };
       });
     },

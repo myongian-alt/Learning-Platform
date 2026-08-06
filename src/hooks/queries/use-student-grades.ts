@@ -51,7 +51,7 @@ export function useStudentGrades() {
       if (classIds.length > 0) {
         const { data: resources, error: resourcesError } = await supabase
           .from('lesson_resources')
-          .select('id, class_id, title, week_number')
+          .select('id, class_id, title, week_number, lesson_number')
           .in('class_id', classIds);
         if (resourcesError) throw resourcesError;
         const resourceById = new Map((resources ?? []).map((r) => [r.id, r]));
@@ -61,7 +61,7 @@ export function useStudentGrades() {
           resourceIds.length > 0
             ? await supabase
                 .from('lesson_slides')
-                .select('id, resource_id, objects')
+                .select('id, resource_id, objects, grading_enabled')
                 .in('resource_id', resourceIds)
             : { data: [], error: null };
         if (slidesError) throw slidesError;
@@ -82,7 +82,7 @@ export function useStudentGrades() {
         for (const submission of submissions ?? []) {
           const slide = slideById.get(submission.slide_id);
           const resource = slide ? resourceById.get(slide.resource_id) : null;
-          if (!slide || !resource) continue;
+          if (!slide || !resource || !slide.grading_enabled) continue;
 
           const auto = autoGradeSlide(
             (slide.objects ?? []) as unknown as SlideObject[],
@@ -113,6 +113,56 @@ export function useStudentGrades() {
             percent,
             feedback: submission.feedback,
             detail: auto ? { correct: auto.correct, total: auto.total } : null,
+            href: `/class/${resource.class_id}` as Href,
+          });
+        }
+
+        const { data: mcqTasks, error: mcqTasksError } =
+          resourceIds.length > 0
+            ? await supabase
+                .from('lesson_attached_tasks')
+                .select('id, resource_id, position')
+                .in('resource_id', resourceIds)
+                .eq('kind', 'custom_mcqs')
+                .order('position', { ascending: true })
+            : { data: [], error: null };
+        if (mcqTasksError) throw mcqTasksError;
+
+        const quizNumberByTask = new Map<string, number>();
+        const quizCounters = new Map<string, number>();
+        for (const task of mcqTasks ?? []) {
+          const n = (quizCounters.get(task.resource_id) ?? 0) + 1;
+          quizCounters.set(task.resource_id, n);
+          quizNumberByTask.set(task.id, n);
+        }
+        const taskIds = (mcqTasks ?? []).map((t) => t.id);
+
+        const { data: mcqSubmissions, error: mcqSubmissionsError } =
+          taskIds.length > 0
+            ? await supabase
+                .from('mcq_task_submissions')
+                .select('id, task_id, score, correct_count, total_count, updated_at')
+                .eq('student_id', studentId!)
+                .in('task_id', taskIds)
+            : { data: [], error: null };
+        if (mcqSubmissionsError) throw mcqSubmissionsError;
+
+        for (const submission of mcqSubmissions ?? []) {
+          const task = (mcqTasks ?? []).find((t) => t.id === submission.task_id);
+          const resource = task ? resourceById.get(task.resource_id) : null;
+          if (!task || !resource) continue;
+          const quizNumber = quizNumberByTask.get(task.id) ?? 1;
+
+          items.push({
+            key: `quiz:${submission.id}`,
+            title: `${resource.title} · Quiz${quizNumber}`,
+            meta: `Week ${resource.week_number} · ${classNameById.get(resource.class_id) ?? 'Class'}`,
+            updatedAt: submission.updated_at,
+            tag: submission.score === 100 ? 'Full marks' : 'Auto',
+            scoreLabel: `${submission.correct_count}/${submission.total_count}`,
+            percent: submission.score,
+            feedback: null,
+            detail: { correct: submission.correct_count, total: submission.total_count },
             href: `/class/${resource.class_id}` as Href,
           });
         }

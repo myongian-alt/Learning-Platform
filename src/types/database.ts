@@ -653,6 +653,7 @@ export type Database = {
           annotations: Json;
           created_at: string;
           duration_minutes: number | null;
+          grading_enabled: boolean;
           id: string;
           objects: Json;
           pacing_mode: Database['public']['Enums']['slide_pacing_mode'];
@@ -666,6 +667,7 @@ export type Database = {
           annotations?: Json;
           created_at?: string;
           duration_minutes?: number | null;
+          grading_enabled?: boolean;
           id?: string;
           objects?: Json;
           pacing_mode?: Database['public']['Enums']['slide_pacing_mode'];
@@ -679,6 +681,7 @@ export type Database = {
           annotations?: Json;
           created_at?: string;
           duration_minutes?: number | null;
+          grading_enabled?: boolean;
           id?: string;
           objects?: Json;
           pacing_mode?: Database['public']['Enums']['slide_pacing_mode'];
@@ -785,6 +788,60 @@ export type Database = {
             columns: ['class_id'];
             isOneToOne: false;
             referencedRelation: 'classes';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      mcq_task_submissions: {
+        Row: {
+          answers: Json;
+          correct_count: number;
+          created_at: string;
+          id: string;
+          score: number;
+          student_id: string;
+          submitted_at: string | null;
+          task_id: string;
+          total_count: number;
+          updated_at: string;
+        };
+        Insert: {
+          answers?: Json;
+          correct_count?: number;
+          created_at?: string;
+          id?: string;
+          score?: number;
+          student_id: string;
+          submitted_at?: string | null;
+          task_id: string;
+          total_count?: number;
+          updated_at?: string;
+        };
+        Update: {
+          answers?: Json;
+          correct_count?: number;
+          created_at?: string;
+          id?: string;
+          score?: number;
+          student_id?: string;
+          submitted_at?: string | null;
+          task_id?: string;
+          total_count?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'mcq_task_submissions_student_id_fkey';
+            columns: ['student_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'mcq_task_submissions_task_id_fkey';
+            columns: ['task_id'];
+            isOneToOne: false;
+            referencedRelation: 'lesson_attached_tasks';
             referencedColumns: ['id'];
           },
         ];
@@ -1355,3 +1412,4 @@ export type LessonAttachedTask = Tables<'lesson_attached_tasks'>;
 export type LessonLivePresence = Tables<'lesson_live_presence'>;
 export type SlideSubmission = Tables<'slide_submissions'>;
 export type LessonAiResources = Tables<'lesson_ai_resources'>;
+export type McqTaskSubmission = Tables<'mcq_task_submissions'>;

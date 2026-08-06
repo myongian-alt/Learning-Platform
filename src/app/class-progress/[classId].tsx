@@ -106,6 +106,7 @@ function buildDemoSlides(): ViewableSlide[] {
     activity_tag: null,
     pacing_mode: index % 2 === 0 ? 'teacher_paced' : 'student_paced',
     submissions_enabled: true,
+    grading_enabled: true,
     url: null,
   }));
 }
