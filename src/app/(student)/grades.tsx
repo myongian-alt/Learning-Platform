@@ -12,17 +12,17 @@ import {
 } from '@/hooks/queries/use-student-grades';
 
 const TAG_COLORS: Record<GradeTag, { bg: string; fg: string }> = {
-  Marked: { bg: '#EDE9FE', fg: '#5B21B6' },
-  'Full marks': { bg: '#DCFCE7', fg: '#047857' },
-  Auto: { bg: '#DBEAFE', fg: '#1D4ED8' },
-  Pending: { bg: '#F5F3FA', fg: '#8A86A3' },
+  Marked: { bg: '#E7E5FA', fg: '#302BB8' },
+  'Full marks': { bg: '#E3F1EA', fg: '#2E6B57' },
+  Auto: { bg: '#FBF0DC', fg: '#8A5A12' },
+  Pending: { bg: '#EDE8DF', fg: '#8F897D' },
 };
 
 function ringColor(percent: number | null) {
-  if (percent === null) return '#D5D0E2';
-  if (percent >= 90) return '#10B981';
-  if (percent >= 70) return '#7C3AED';
-  return '#F59E0B';
+  if (percent === null) return '#DDD6C8';
+  if (percent >= 90) return '#2E6B57';
+  if (percent >= 70) return '#302BB8';
+  return '#E8B04B';
 }
 
 export default function StudentGradesScreen() {
@@ -33,24 +33,24 @@ export default function StudentGradesScreen() {
 
   return (
     <StudentShell>
-      <SafeAreaView className="flex-1 bg-lf-canvas">
-        <ScrollView contentContainerClassName="gap-6 px-5 py-6 md:px-9" className="flex-1">
-          <View className="mx-auto w-full max-w-5xl gap-6">
-            <View>
-              <Text className="text-3xl font-extrabold tracking-tight text-lf-ink">
-                Grades &amp; feedback
-              </Text>
-              <Text className="text-base text-lf-muted">
-                Everything your teachers have looked at, with their marks and comments.
-              </Text>
-            </View>
+      <SafeAreaView className="flex-1 bg-desk-canvas">
+        <ScrollView className="flex-1" contentContainerClassName="pb-11">
+          <View className="w-full max-w-[1180px] px-[34px] pt-[34px]" style={{ alignSelf: 'center' }}>
+            <Text className="font-poppins-semibold text-[30px] tracking-tighter text-desk-body">
+              Grades &amp; feedback
+            </Text>
+            <Text className="mt-1.5 max-w-[52ch] font-desk-sans text-[14.5px] leading-[1.5] text-desk-body2">
+              Everything your teachers have looked at, with their marks and comments.
+            </Text>
 
-            {isLoading && <ActivityIndicator />}
+            {isLoading && <ActivityIndicator style={{ marginTop: 16 }} />}
             {!isLoading && items.length === 0 && (
-              <Text className="text-sm text-lf-muted">Nothing graded yet.</Text>
+              <Text className="mt-4 font-desk-sans text-sm text-desk-muted3">
+                Nothing graded yet.
+              </Text>
             )}
 
-            <View className="flex-row flex-wrap items-start gap-5">
+            <View className="mt-6 flex-row flex-wrap items-start gap-5">
               <View className="gap-2.5" style={{ minWidth: 300, flex: 1 }}>
                 {items.map((item) => {
                   const tag = TAG_COLORS[item.tag];
@@ -60,25 +60,31 @@ export default function StudentGradesScreen() {
                     <Pressable
                       key={item.key}
                       onPress={() => setSelectedKey(item.key)}
-                      className="flex-row items-center gap-3.5 rounded-2xl bg-white p-3.5"
-                      style={{ borderWidth: 2, borderColor: isSelected ? '#7C3AED' : '#EDEAF4' }}
+                      className="flex-row items-center gap-3.5 rounded bg-desk-surface p-3.5"
+                      style={{ borderWidth: 1.5, borderColor: isSelected ? '#302BB8' : '#DDD6C8' }}
                     >
                       <View
                         className="h-11 w-11 items-center justify-center rounded-full"
                         style={{ backgroundColor: `${ring}22`, borderWidth: 2, borderColor: ring }}
                       >
-                        <Text className="text-[11px] font-extrabold text-lf-ink">
+                        <Text className="font-desk-sans-bold text-[11px] text-desk-body">
                           {item.percent !== null ? `${item.percent}%` : '—'}
                         </Text>
                       </View>
                       <View className="flex-1">
-                        <Text className="text-[14.5px] font-bold text-lf-ink" numberOfLines={1}>
+                        <Text
+                          className="font-desk-sans-semibold text-[14.5px] text-desk-body"
+                          numberOfLines={1}
+                        >
                           {item.title}
                         </Text>
-                        <Text className="text-xs text-lf-muted">{item.meta}</Text>
+                        <Text className="font-desk-sans text-xs text-desk-muted3">{item.meta}</Text>
                       </View>
-                      <View className="rounded-lg px-2 py-1" style={{ backgroundColor: tag.bg }}>
-                        <Text className="text-[10.5px] font-bold" style={{ color: tag.fg }}>
+                      <View className="rounded px-2 py-1" style={{ backgroundColor: tag.bg }}>
+                        <Text
+                          className="font-desk-sans-bold text-[10.5px]"
+                          style={{ color: tag.fg }}
+                        >
                           {item.tag}
                         </Text>
                       </View>
@@ -89,7 +95,7 @@ export default function StudentGradesScreen() {
 
               {selected && (
                 <View
-                  className="gap-5 rounded-3xl bg-white p-6 shadow-sm"
+                  className="gap-5 rounded border border-desk-hairline bg-desk-surface p-6"
                   style={{ minWidth: 300, flex: 1 }}
                 >
                   <View className="flex-row items-center gap-4">
@@ -101,49 +107,57 @@ export default function StudentGradesScreen() {
                         borderColor: ringColor(selected.percent),
                       }}
                     >
-                      <Text className="text-lg font-extrabold text-lf-ink">
+                      <Text className="font-poppins-semibold text-lg text-desk-body">
                         {selected.scoreLabel}
                       </Text>
                     </View>
                     <View className="flex-1">
-                      <Text className="text-lg font-extrabold text-lf-ink">{selected.title}</Text>
-                      <Text className="text-xs text-lf-muted">{selected.meta}</Text>
+                      <Text className="font-poppins-semibold text-lg tracking-tighter text-desk-body">
+                        {selected.title}
+                      </Text>
+                      <Text className="font-desk-sans text-xs text-desk-muted3">
+                        {selected.meta}
+                      </Text>
                     </View>
                   </View>
 
                   {selected.detail && (
                     <View className="gap-2">
-                      <Text className="text-xs font-bold uppercase tracking-wide text-lf-muted3">
+                      <Text className="font-desk-sans-bold text-[11px] uppercase tracking-[0.12em] text-desk-muted3">
                         Auto-graded breakdown
                       </Text>
-                      <Text className="text-sm font-semibold text-lf-ink2">
+                      <Text className="font-desk-sans-semibold text-sm text-desk-body">
                         {selected.detail.correct} of {selected.detail.total} questions correct
                       </Text>
                     </View>
                   )}
 
                   <View className="gap-2">
-                    <Text className="text-xs font-bold uppercase tracking-wide text-lf-muted3">
+                    <Text className="font-desk-sans-bold text-[11px] uppercase tracking-[0.12em] text-desk-muted3">
                       Teacher comment
                     </Text>
                     {selected.feedback ? (
-                      <View className="flex-row gap-3 rounded-2xl bg-lf-purpleTint p-4">
-                        <View className="h-8 w-8 items-center justify-center rounded-full bg-lf-primary">
+                      <View className="flex-row gap-3 rounded bg-desk-indigoTint p-4">
+                        <View className="h-8 w-8 items-center justify-center rounded-full bg-desk-indigo">
                           <Feather name="user" size={13} color="#fff" />
                         </View>
-                        <Text className="flex-1 text-sm leading-5 text-lf-ink2">
+                        <Text className="flex-1 font-desk-sans text-sm leading-5 text-desk-body2">
                           {selected.feedback}
                         </Text>
                       </View>
                     ) : (
-                      <Text className="text-sm text-lf-muted">No comment left on this one.</Text>
+                      <Text className="font-desk-sans text-sm text-desk-muted3">
+                        No comment left on this one.
+                      </Text>
                     )}
                   </View>
 
                   <Link href={selected.href} asChild>
-                    <Pressable className="mt-1 flex-row items-center gap-2 self-start rounded-full bg-lf-primary px-5 py-3">
-                      <Text className="text-sm font-extrabold text-white">Open</Text>
-                      <Feather name="arrow-right" size={14} color="#fff" />
+                    <Pressable className="mt-1 flex-row items-center gap-2 self-start rounded bg-desk-amber px-5 py-3">
+                      <Text className="font-poppins-semibold text-sm text-desk-amberText">
+                        Open
+                      </Text>
+                      <Feather name="arrow-right" size={14} color="#1A1200" />
                     </Pressable>
                   </Link>
                 </View>

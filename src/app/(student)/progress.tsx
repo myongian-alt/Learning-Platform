@@ -3,10 +3,9 @@ import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { StudentShell } from '@/components/layout/student-shell';
-import { ProgressBar } from '@/components/ui/progress-bar';
 import { useStudentDashboard } from '@/hooks/queries/use-student-dashboard';
 
-const CLASS_ACCENTS = ['#EC4899', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'];
+const CLASS_ACCENTS = ['#302BB8', '#4B45E0', '#8C8BF0', '#4B7BF5', '#2E6B57'];
 
 export default function StudentProgressScreen() {
   const dashboard = useStudentDashboard();
@@ -15,57 +14,68 @@ export default function StudentProgressScreen() {
 
   return (
     <StudentShell>
-      <SafeAreaView className="flex-1 bg-lf-canvas">
-        <ScrollView contentContainerClassName="gap-6 px-5 py-6 md:px-9" className="flex-1">
-          <View className="mx-auto w-full max-w-4xl gap-6">
-            <View>
-              <Text className="text-3xl font-extrabold tracking-tight text-lf-ink">
-                Your progress
-              </Text>
-              <Text className="text-base text-lf-muted">Keep the streak going.</Text>
-            </View>
+      <SafeAreaView className="flex-1 bg-desk-canvas">
+        <ScrollView className="flex-1" contentContainerClassName="pb-11">
+          <View className="w-full max-w-[1180px] px-[34px] pt-[34px]" style={{ alignSelf: 'center' }}>
+            <Text className="font-poppins-semibold text-[30px] tracking-tighter text-desk-body">
+              Your progress
+            </Text>
+            <Text className="mt-1.5 max-w-[52ch] font-desk-sans text-[14.5px] leading-[1.5] text-desk-body2">
+              Keep the streak going.
+            </Text>
 
-            {dashboard.isLoading && <ActivityIndicator />}
+            {dashboard.isLoading && <ActivityIndicator style={{ marginTop: 16 }} />}
 
-            <View className="flex-row flex-wrap gap-4">
+            <View className="mt-6 flex-row flex-wrap gap-4">
               <View
-                className="justify-center gap-1.5 rounded-3xl p-6"
-                style={{ backgroundColor: '#F59E0B', minWidth: 220, flex: 1 }}
+                className="justify-center gap-1.5 rounded bg-desk-amber p-6"
+                style={{ minWidth: 220, flex: 1 }}
               >
-                <Text className="text-xs font-bold tracking-wide text-white/80">
-                  CURRENT STREAK
+                <Text className="font-desk-sans-bold text-xs uppercase tracking-[0.1em] text-desk-amberText">
+                  Current streak
                 </Text>
-                <Text className="text-5xl font-extrabold tracking-tight text-white">
+                <Text className="font-poppins-semibold text-5xl tracking-tighter text-desk-amberText">
                   {data?.streak ?? 0}
                 </Text>
-                <Text className="text-sm font-semibold text-white/90">school days in a row</Text>
+                <Text className="font-desk-sans-semibold text-sm text-desk-amberText">
+                  school days in a row
+                </Text>
               </View>
 
               <View
-                className="gap-3 rounded-3xl bg-white p-6 shadow-sm"
+                className="gap-3 rounded border border-desk-hairline bg-desk-surface p-6"
                 style={{ minWidth: 260, flex: 1 }}
               >
-                <Text className="text-[15px] font-extrabold text-lf-ink">Completion by class</Text>
+                <Text className="font-poppins-semibold text-[15px] tracking-tighter text-desk-body">
+                  Completion by class
+                </Text>
                 <View className="gap-3">
                   {(data?.classes ?? []).map((c, i) => (
                     <View key={c.id} className="gap-1.5">
                       <View className="flex-row items-center justify-between">
-                        <Text className="text-[13px] font-bold text-lf-ink2" numberOfLines={1}>
+                        <Text
+                          className="font-desk-sans-semibold text-[13px] text-desk-body2"
+                          numberOfLines={1}
+                        >
                           {c.name}
                         </Text>
-                        <Text className="text-[13px] font-bold text-lf-ink2">
+                        <Text className="font-desk-sans-semibold text-[13px] text-desk-body2">
                           {c.percentComplete}%
                         </Text>
                       </View>
-                      <ProgressBar
-                        percent={c.percentComplete}
-                        color={CLASS_ACCENTS[i % CLASS_ACCENTS.length]}
-                        height={8}
-                      />
+                      <View className="h-1 bg-desk-hairline">
+                        <View
+                          className="h-full"
+                          style={{
+                            width: `${c.percentComplete}%`,
+                            backgroundColor: CLASS_ACCENTS[i % CLASS_ACCENTS.length],
+                          }}
+                        />
+                      </View>
                     </View>
                   ))}
                   {(data?.classes.length ?? 0) === 0 && (
-                    <Text className="text-sm text-lf-muted">
+                    <Text className="font-desk-sans text-sm text-desk-muted3">
                       Join a class to see progress here.
                     </Text>
                   )}
@@ -73,25 +83,27 @@ export default function StudentProgressScreen() {
               </View>
 
               <View
-                className="gap-3 rounded-3xl bg-white p-6 shadow-sm"
+                className="gap-3 rounded border border-desk-hairline bg-desk-surface p-6"
                 style={{ minWidth: 260, flex: 1 }}
               >
-                <Text className="text-[15px] font-extrabold text-lf-ink">Badges</Text>
-                <View className="flex-row flex-wrap gap-3">
+                <Text className="font-poppins-semibold text-[15px] tracking-tighter text-desk-body">
+                  Badges
+                </Text>
+                <View className="flex-row flex-wrap gap-2.5">
                   {(data?.badges ?? []).map((badge) => (
                     <View
                       key={badge.key}
-                      className="items-center gap-1.5 rounded-2xl p-3"
-                      style={{ backgroundColor: badge.earned ? '#F59E0B1A' : '#F7F5FB', width: 92 }}
+                      className="items-center gap-1.5 rounded-xl px-3.5 py-3"
+                      style={{ backgroundColor: badge.earned ? '#F7EAD9' : '#EDE8DF', width: 92 }}
                     >
                       <Feather
                         name="award"
                         size={20}
-                        color={badge.earned ? '#F59E0B' : '#B4B0C4'}
+                        color={badge.earned ? '#C56A2B' : '#8F897D'}
                       />
                       <Text
-                        className="leading-3.5 text-center text-[10.5px] font-bold"
-                        style={{ color: badge.earned ? '#B45309' : '#B4B0C4' }}
+                        className="max-w-[76px] text-center font-desk-sans-semibold text-[10.5px]"
+                        style={{ color: badge.earned ? '#7A4415' : '#8F897D' }}
                       >
                         {badge.label}
                       </Text>
@@ -101,8 +113,10 @@ export default function StudentProgressScreen() {
               </View>
             </View>
 
-            <View className="gap-4 rounded-3xl bg-white p-6 shadow-sm">
-              <Text className="text-[15px] font-extrabold text-lf-ink">Activity, last 8 weeks</Text>
+            <View className="mt-6 gap-4 rounded border border-desk-hairline bg-desk-surface p-6">
+              <Text className="font-poppins-semibold text-[15px] tracking-tighter text-desk-body">
+                Activity, last 8 weeks
+              </Text>
               <View className="flex-row items-end gap-2.5" style={{ height: 140 }}>
                 {(data?.weeklyActivity ?? []).map((bucket, i) => {
                   const isCurrent = i === (data?.weeklyActivity.length ?? 1) - 1;
@@ -114,13 +128,15 @@ export default function StudentProgressScreen() {
                       style={{ height: '100%' }}
                     >
                       <View
-                        className="w-full rounded-t-lg"
+                        className="w-full rounded-t"
                         style={{
                           height: `${heightPct}%`,
-                          backgroundColor: isCurrent ? '#7C3AED' : '#C4B5FD',
+                          backgroundColor: isCurrent ? '#302BB8' : '#8C8BF0',
                         }}
                       />
-                      <Text className="text-[10px] font-bold text-lf-muted4">W{bucket.label}</Text>
+                      <Text className="font-desk-sans-bold text-[10px] text-desk-muted3">
+                        W{bucket.label}
+                      </Text>
                     </View>
                   );
                 })}
