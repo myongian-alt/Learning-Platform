@@ -28,6 +28,7 @@ import {
   type SlideObject,
   type SlideObjectShape,
   type SlideStroke,
+  type SlideTimerCommand,
   type ViewableSlide,
 } from '@/hooks/queries/use-lesson-slides';
 import {
@@ -41,6 +42,7 @@ import {
   useSlideSubmissions,
   type SlideSubmissionWithStudent,
 } from '@/hooks/queries/use-slide-submissions';
+import { autoGradeSlide, type AutoGradeResult } from '@/lib/slide-grading';
 import type { LessonResource, SlideActivityTag } from '@/types/database';
 
 export const SLIDE_TAGS: Record<SlideActivityTag, { label: string; color: string }> = {
@@ -100,6 +102,7 @@ export function SlideViewerModal({
     data: slides,
     isLoading,
     updateSlide,
+    updateSlidesPacing,
     saveAnnotations,
     saveObjects,
   } = useLessonSlides(resource.id);
@@ -169,6 +172,7 @@ export function SlideViewerModal({
         onPrev={() => setIndex((i) => Math.max(0, i - 1))}
         onNext={() => setIndex((i) => Math.min(total - 1, i + 1))}
         updateSlide={updateSlide}
+        updateSlidesPacing={updateSlidesPacing}
         saveAnnotations={saveAnnotations}
         saveObjects={saveObjects}
         viewerRole={viewerRole}
@@ -194,6 +198,7 @@ function SlideStage({
   onPrev,
   onNext,
   updateSlide,
+  updateSlidesPacing,
   saveAnnotations,
   saveObjects,
   viewerRole,
@@ -214,6 +219,7 @@ function SlideStage({
   onPrev: () => void;
   onNext: () => void;
   updateSlide: ReturnType<typeof useLessonSlides>['updateSlide'];
+  updateSlidesPacing: ReturnType<typeof useLessonSlides>['updateSlidesPacing'];
   saveAnnotations: ReturnType<typeof useLessonSlides>['saveAnnotations'];
   saveObjects: ReturnType<typeof useLessonSlides>['saveObjects'];
   viewerRole: SlideViewerRole;
@@ -358,14 +364,27 @@ function SlideStage({
 
   // A student's answers to the teacher's fill-in-the-blank/multiple-choice questions —
   // irrelevant for the teacher's own view (they author questions, they don't answer them).
-  // Tracked as local state (seeded once, same as canvasStrokes/myObjects below) rather than
-  // re-derived from the query on every render: saveAnswers deliberately skips cache
-  // invalidation, so re-deriving from `mySubmission.data` would merge each new answer against
-  // the same stale (pre-first-save) snapshot every time, silently dropping every answer but
-  // the most recent whenever a student answers more than one question on a slide.
-  const [myAnswers, setMyAnswers] = useState<SlideAnswers>(
-    () => (mySubmission.data?.answers as unknown as SlideAnswers) ?? {},
-  );
+  // Tracked as local state rather than re-derived from the query on every render: saveAnswers
+  // deliberately skips cache invalidation, so re-deriving from `mySubmission.data` would merge
+  // each new answer against the same stale (pre-first-save) snapshot every time, silently
+  // dropping every answer but the most recent whenever a student answers more than one
+  // question on a slide.
+  //
+  // Seeded via the render-time-adjust pattern (see SlideTimer above) rather than a one-shot
+  // `useState(() => mySubmission.data?.answers ...)` initializer — on a genuinely cold load
+  // (no prior cache for this slide+student), `mySubmission.data` is still `undefined` at the
+  // moment this component first mounts, so the naive one-shot version permanently locked in
+  // `{}` and never got a chance to pick up the real saved answers once the query resolved.
+  // Concretely this meant a student's grade badge wrongly showed 0% until they revisited the
+  // slide, AND (more seriously) answering any single question while in that state wiped out
+  // every other answer they'd already saved on it, since `next` merged against the empty seed
+  // instead of their real prior answers — a genuine data-loss bug, not just a display glitch.
+  const [myAnswers, setMyAnswers] = useState<SlideAnswers>({});
+  const [answersSeeded, setAnswersSeeded] = useState(false);
+  if (!isTeacher && !answersSeeded && !mySubmission.isLoading) {
+    setAnswersSeeded(true);
+    setMyAnswers((mySubmission.data?.answers as unknown as SlideAnswers) ?? {});
+  }
   const handleAnswerChange = (questionId: string, value: string | number) => {
     const next = { ...myAnswers, [questionId]: value };
     setMyAnswers(next);
@@ -382,6 +401,13 @@ function SlideStage({
     (o): o is Extract<SlideObject, { type: 'fill_blank' }> => o.type === 'fill_blank',
   );
   const [overlay, setOverlay] = useState<'quiz' | 'blanks' | null>(null);
+
+  // A student's own result for this slide, kept live via useMySlideSubmission's realtime
+  // subscription — a teacher setting a manual grade updates this without the student
+  // reloading. Auto-graded percent recomputes from the slide's current objects + the
+  // student's stored answers (same as Gradebook/Grades tab), so it's never stale relative
+  // to either.
+  const myAutoResult = !isTeacher ? autoGradeSlide(teacherObjects, myAnswers) : null;
 
   const toolbarProps = {
     tool,
@@ -527,14 +553,43 @@ function SlideStage({
     </Pressable>
   );
 
-  // Read-only, for context while presenting/viewing — the only place pacing is *set* is the
-  // teacher's bulk-select on the slide-thumbnail grid (`SlideThumbnailGroup`), not here.
-  const pacingBadge = slide?.pacing_mode === 'teacher_paced' && (
-    <View className="flex-row items-center gap-1 rounded-full bg-violet-50 px-2 py-1">
-      <Feather name="lock" size={10} color="#7c3aed" />
-      <Text className="text-[10px] font-semibold text-violet-700">Teacher-paced</Text>
-    </View>
-  );
+  // Read-only badge for students — the teacher gets a tappable toggle instead, so pacing can
+  // be flipped for the slide currently being presented without leaving to the thumbnail grid's
+  // bulk "Set pacing" control (still the only way to set it for slides not open right now).
+  const pacingBadge =
+    isTeacher && slide ? (
+      <Pressable
+        onPress={() =>
+          updateSlidesPacing.mutate({
+            ids: [slide.id],
+            pacingMode: slide.pacing_mode === 'teacher_paced' ? 'student_paced' : 'teacher_paced',
+          })
+        }
+        className={`flex-row items-center gap-1 rounded-full px-2 py-1 ${
+          slide.pacing_mode === 'teacher_paced' ? 'bg-violet-50' : 'bg-black/[0.03]'
+        }`}
+      >
+        <Feather
+          name={slide.pacing_mode === 'teacher_paced' ? 'lock' : 'unlock'}
+          size={10}
+          color={slide.pacing_mode === 'teacher_paced' ? '#7c3aed' : '#9ca3af'}
+        />
+        <Text
+          className={`text-[10px] font-semibold ${
+            slide.pacing_mode === 'teacher_paced' ? 'text-violet-700' : 'text-ink/50'
+          }`}
+        >
+          {slide.pacing_mode === 'teacher_paced' ? 'Teacher-paced' : 'Student-paced'}
+        </Text>
+      </Pressable>
+    ) : (
+      slide?.pacing_mode === 'teacher_paced' && (
+        <View className="flex-row items-center gap-1 rounded-full bg-violet-50 px-2 py-1">
+          <Feather name="lock" size={10} color="#7c3aed" />
+          <Text className="text-[10px] font-semibold text-violet-700">Teacher-paced</Text>
+        </View>
+      )
+    );
 
   const studentSubmitButton = !isTeacher && slide?.submissions_enabled && (
     <Pressable
@@ -680,15 +735,25 @@ function SlideStage({
             {teacherSubmissionsToggle}
             {teacherGradingToggle}
             {isTeacher && slide.grading_enabled && <GradingPanel submissions={submissions} />}
+            {!isTeacher && slide.grading_enabled && (
+              <StudentGradePanel
+                isSubmitted={isSubmitted}
+                grade={mySubmission.data?.grade ?? null}
+                autoResult={myAutoResult}
+                feedback={mySubmission.data?.feedback ?? null}
+              />
+            )}
           </View>
 
           <SlideTimer
             key={slide.id}
             durationMinutes={slide.duration_minutes}
+            timerCommand={slide.timer_command as SlideTimerCommand}
             editable={isTeacher}
             onChangeDuration={(minutes) =>
               updateSlide.mutate({ id: slide.id, durationMinutes: minutes || null })
             }
+            onChangeCommand={(command) => updateSlide.mutate({ id: slide.id, timerCommand: command })}
           />
         </View>
       )}
@@ -788,35 +853,46 @@ function SlideStage({
                   onChange={() => {}}
                 />
               )}
-              <SlideCanvas
-                key={slide.id}
-                ref={canvasRef}
-                initialStrokes={canvasStrokes}
-                tool={tool}
-                color={tool === 'highlight' ? HIGHLIGHT_COLOR : drawColor}
-                strokeWidth={tool === 'highlight' ? 16 : drawWidth}
-                zoom={zoom}
-                onChange={handleCanvasChange}
-                onHistoryChange={(u, r) => {
-                  setCanUndo(u);
-                  setCanRedo(r);
-                }}
-              />
+              {/* Gated on mySubmission having actually resolved (for students — the teacher's
+                  own annotations/objects come straight from the already-loaded slide, no
+                  race): mounting this before the submission query settles would seed its
+                  local state from stale/empty data and never get a chance to re-seed once the
+                  real data arrived — see the myAnswers comment above for the concrete bug this
+                  caused. A near-instant loading gap is a fine tradeoff for not silently
+                  discarding a student's saved work. */}
+              {(isTeacher || !mySubmission.isLoading) && (
+                <SlideCanvas
+                  key={slide.id}
+                  ref={canvasRef}
+                  initialStrokes={canvasStrokes}
+                  tool={tool}
+                  color={tool === 'highlight' ? HIGHLIGHT_COLOR : drawColor}
+                  strokeWidth={tool === 'highlight' ? 16 : drawWidth}
+                  zoom={zoom}
+                  onChange={handleCanvasChange}
+                  onHistoryChange={(u, r) => {
+                    setCanUndo(u);
+                    setCanRedo(r);
+                  }}
+                />
+              )}
 
-              <SlideObjectsLayer
-                objects={myObjects}
-                onChange={handleObjectsChange}
-                interactive={tool === 'select'}
-                pending={pending}
-                onPlaced={() => setPending(null)}
-                zoom={zoom}
-              />
+              {(isTeacher || !mySubmission.isLoading) && (
+                <SlideObjectsLayer
+                  objects={myObjects}
+                  onChange={handleObjectsChange}
+                  interactive={tool === 'select'}
+                  pending={pending}
+                  onPlaced={() => setPending(null)}
+                  zoom={zoom}
+                />
+              )}
 
               {/* Rendered last (stacked on top) so its answerable question objects are
                   reachable — the student's own interactive layer above would otherwise
                   cover the full slide with its click-catcher and block taps meant for
                   these read-only reference objects. */}
-              {!isTeacher && teacherObjects.length > 0 && (
+              {!isTeacher && teacherObjects.length > 0 && !mySubmission.isLoading && (
                 <SlideObjectsLayer
                   objects={teacherObjects}
                   onChange={() => {}}
@@ -860,6 +936,14 @@ function SlideStage({
               {teacherSubmissionsToggle}
               {teacherGradingToggle}
               {isTeacher && slide?.grading_enabled && <GradingPanel submissions={submissions} />}
+              {!isTeacher && slide?.grading_enabled && (
+                <StudentGradePanel
+                  isSubmitted={isSubmitted}
+                  grade={mySubmission.data?.grade ?? null}
+                  autoResult={myAutoResult}
+                  feedback={mySubmission.data?.feedback ?? null}
+                />
+              )}
               {liveTag}
               {liveToggle}
             </View>
@@ -871,9 +955,13 @@ function SlideStage({
               <SlideTimer
                 key={slide.id}
                 durationMinutes={slide.duration_minutes}
+                timerCommand={slide.timer_command as SlideTimerCommand}
                 editable={isTeacher}
                 onChangeDuration={(minutes) =>
                   updateSlide.mutate({ id: slide.id, durationMinutes: minutes || null })
+                }
+                onChangeCommand={(command) =>
+                  updateSlide.mutate({ id: slide.id, timerCommand: command })
                 }
               />
             </View>
@@ -1227,6 +1315,70 @@ function GradingRow({
   );
 }
 
+// A student's own read-only result for a graded slide — mirrors the teacher's GradingPanel
+// visually, but shows exactly one outcome (their own) instead of a per-student list. Reflects
+// a manual grade if the teacher set one, else the live auto-graded percent, else "waiting to
+// be graded" once submitted but neither applies yet (e.g. a manual-only slide like an exit
+// ticket with no fill_blank/multiple_choice objects).
+function StudentGradePanel({
+  isSubmitted,
+  grade,
+  autoResult,
+  feedback,
+}: {
+  isSubmitted: boolean;
+  grade: number | null;
+  autoResult: AutoGradeResult | null;
+  feedback: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const hasManualGrade = grade !== null;
+  const percent = hasManualGrade ? grade : (autoResult?.percent ?? null);
+
+  if (!isSubmitted) {
+    return (
+      <View className="flex-row items-center gap-1.5 rounded-full bg-black/[0.03] px-2.5 py-1.5">
+        <Feather name="clock" size={12} color="#9ca3af" />
+        <Text className="text-xs text-ink/40">Not submitted yet</Text>
+      </View>
+    );
+  }
+
+  if (percent === null) {
+    return (
+      <View className="flex-row items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1.5">
+        <Feather name="clock" size={12} color="#b45309" />
+        <Text className="text-xs font-medium text-amber-700">Waiting to be graded</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View>
+      <Pressable
+        onPress={() => setOpen((v) => !v)}
+        disabled={!feedback}
+        className="flex-row items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1.5"
+      >
+        <Feather name="award" size={13} color="#059669" />
+        <Text className="text-xs font-bold text-emerald-700">
+          {percent}%
+          {!hasManualGrade && autoResult ? ` · ${autoResult.correct}/${autoResult.total} correct` : ''}
+        </Text>
+        {feedback && <Feather name={open ? 'chevron-up' : 'chevron-down'} size={12} color="#059669" />}
+      </Pressable>
+      {open && feedback && (
+        <View className="absolute left-0 top-11 z-10 w-64 rounded-xl bg-white p-3 shadow-lg">
+          <Text className="text-[10px] font-semibold uppercase tracking-wide text-ink/40">
+            Teacher feedback
+          </Text>
+          <Text className="mt-1 text-xs text-ink/80">{feedback}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 type ToolbarIconName =
   | { set: 'feather'; name: keyof typeof Feather.glyphMap }
   | { set: 'ionicons'; name: keyof typeof Ionicons.glyphMap };
@@ -1545,43 +1697,99 @@ function SlideToolbarButtons({
 
 const MAX_SLIDE_MINUTES = 20;
 
+// Command-driven, not locally-owned: `timerCommand` ('idle' | 'running' | 'paused') lives on
+// the slide itself (synced live to every viewer via useRealtimeInvalidate in
+// use-lesson-slides.ts — see lesson_slides_timer_command migration), and only the teacher's
+// Start/Pause/Reset buttons ever write it. Every viewer — teacher included — reacts to the
+// command the same way via the effect below, which is what gives a self-paced student their
+// own fresh countdown the moment they're on the slide "live": mounting with the command
+// already 'running' takes the same "start fresh" branch as watching it flip to 'running'
+// while already here, rather than one shared classroom-wide deadline.
 function SlideTimer({
   durationMinutes,
+  timerCommand,
   editable,
   onChangeDuration,
+  onChangeCommand,
 }: {
   durationMinutes: number | null;
+  timerCommand: SlideTimerCommand;
   editable: boolean;
   onChangeDuration: (minutes: number) => void;
+  onChangeCommand: (command: SlideTimerCommand) => void;
 }) {
-  // Tracked locally (seeded once from the prop at mount, via the parent's key={slide.id})
-  // rather than read from the prop on every click — the prop only reflects the server's
-  // value after the update round-trips back through React Query, so a quick run of clicks
-  // would otherwise each read the same stale value and clobber each other.
-  const [minutes, setMinutes] = useState(durationMinutes ?? 0);
-  const [seconds, setSeconds] = useState((durationMinutes ?? 0) * 60);
-  const [running, setRunning] = useState(false);
+  const fullSeconds = (durationMinutes ?? 0) * 60;
+  const [seconds, setSeconds] = useState(fullSeconds);
+  const [expired, setExpired] = useState(false);
+  const [blinkOn, setBlinkOn] = useState(true);
+  // Whether THIS viewer's own countdown has begun, and the last `timerCommand` seen — plain
+  // state (not refs: this repo's lint config forbids touching refs during render), read/written
+  // only by the render-time transition check right below.
+  const [hasStarted, setHasStarted] = useState(timerCommand === 'running');
+  const [prevCommand, setPrevCommand] = useState(timerCommand);
+
+  // Reacts to `timerCommand` changing by adjusting state DURING render — React's documented
+  // pattern for resetting/adjusting state in response to a prop change ("Adjusting some state
+  // when a prop changes" in the React docs: compare against a state-tracked previous value and
+  // call setState directly in the render body) — rather than in a useEffect, which would cost
+  // an extra render pass and trips this repo's react-hooks/set-state-in-effect rule. This is
+  // also what gives a self-paced student their own fresh countdown the moment they're on the
+  // slide "live": mounting with the command already 'running' hits this same branch on the
+  // very first render, exactly like watching it flip to 'running' while already here.
+  if (prevCommand !== timerCommand) {
+    setPrevCommand(timerCommand);
+    if (timerCommand === 'running') {
+      if (!hasStarted) setSeconds(fullSeconds);
+      setHasStarted(true);
+      setExpired(false);
+    } else if (timerCommand === 'idle') {
+      setSeconds(fullSeconds);
+      setHasStarted(false);
+      setExpired(false);
+    }
+    // 'paused' deliberately falls through untouched — the ticking effect below just stops,
+    // freezing `seconds` wherever it currently is for this viewer.
+  }
 
   useEffect(() => {
-    if (!running) return;
+    if (timerCommand !== 'running') return;
     const interval = setInterval(() => {
       setSeconds((s) => {
         if (s <= 1) {
-          setRunning(false);
+          setExpired(true);
           return 0;
         }
         return s - 1;
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [running]);
+  }, [timerCommand]);
 
+  useEffect(() => {
+    if (!expired) return;
+    const interval = setInterval(() => setBlinkOn((b) => !b), 500);
+    return () => clearInterval(interval);
+  }, [expired]);
+
+  // Optimistic local resets (mirrored by the effect above once the mutation round-trips back
+  // through the realtime-synced slide list) so a teacher's own controls feel instant instead
+  // of waiting on a network round-trip, same reasoning as every other optimistic-then-persist
+  // control in this app.
   const adjust = (delta: number) => {
-    const next = Math.max(0, Math.min(MAX_SLIDE_MINUTES, minutes + delta));
-    setMinutes(next);
-    onChangeDuration(next);
-    setSeconds(next * 60);
-    setRunning(false);
+    const currentMinutes = Math.round(fullSeconds / 60);
+    const nextMinutes = Math.max(0, Math.min(MAX_SLIDE_MINUTES, currentMinutes + delta));
+    onChangeDuration(nextMinutes);
+    onChangeCommand('idle');
+    setSeconds(nextMinutes * 60);
+    setHasStarted(false);
+    setExpired(false);
+  };
+
+  const reset = () => {
+    onChangeCommand('idle');
+    setSeconds(fullSeconds);
+    setHasStarted(false);
+    setExpired(false);
   };
 
   if (!editable && !durationMinutes) return null;
@@ -1599,7 +1807,7 @@ function SlideTimer({
           </Pressable>
         )}
         <Text className="w-14 text-center text-xs font-semibold text-ink">
-          {minutes ? `${minutes} min` : 'None'}
+          {fullSeconds ? `${Math.round(fullSeconds / 60)} min` : 'None'}
         </Text>
         {editable && (
           <Pressable
@@ -1612,29 +1820,38 @@ function SlideTimer({
       </View>
 
       <View className="flex-row items-center gap-2">
-        <Feather name="clock" size={13} color={seconds === 0 ? '#9ca3af' : '#7c3aed'} />
-        <Text className={`text-sm font-bold ${seconds === 0 ? 'text-ink/30' : 'text-violet-700'}`}>
-          {formatTimer(seconds)}
-        </Text>
-        <Pressable
-          onPress={() => setRunning((r) => !r)}
-          disabled={seconds === 0}
-          style={{ opacity: seconds === 0 ? 0.4 : 1 }}
-          className="rounded-md bg-violet-600 px-2.5 py-1"
-        >
-          <Text className="text-[11px] font-semibold text-white">
-            {running ? 'Pause' : 'Start'}
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => {
-            setRunning(false);
-            setSeconds(minutes * 60);
-          }}
-          className="rounded-md bg-black/5 px-2.5 py-1"
-        >
-          <Text className="text-[11px] font-medium text-ink/60">Reset</Text>
-        </Pressable>
+        {expired ? (
+          <View style={{ opacity: blinkOn ? 1 : 0.35 }} className="flex-row items-center gap-1.5">
+            <Feather name="alert-circle" size={13} color="#dc2626" />
+            <Text className="text-sm font-bold text-red-600">Time&apos;s up</Text>
+          </View>
+        ) : (
+          <>
+            <Feather name="clock" size={13} color={seconds === 0 ? '#9ca3af' : '#7c3aed'} />
+            <Text
+              className={`text-sm font-bold ${seconds === 0 ? 'text-ink/30' : 'text-violet-700'}`}
+            >
+              {formatTimer(seconds)}
+            </Text>
+          </>
+        )}
+        {editable && (
+          <>
+            <Pressable
+              onPress={() => onChangeCommand(timerCommand === 'running' ? 'paused' : 'running')}
+              disabled={fullSeconds === 0}
+              style={{ opacity: fullSeconds === 0 ? 0.4 : 1 }}
+              className="rounded-md bg-violet-600 px-2.5 py-1"
+            >
+              <Text className="text-[11px] font-semibold text-white">
+                {timerCommand === 'running' ? 'Pause' : 'Start'}
+              </Text>
+            </Pressable>
+            <Pressable onPress={reset} className="rounded-md bg-black/5 px-2.5 py-1">
+              <Text className="text-[11px] font-medium text-ink/60">Reset</Text>
+            </Pressable>
+          </>
+        )}
       </View>
     </View>
   );

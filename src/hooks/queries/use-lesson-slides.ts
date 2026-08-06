@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { useRealtimeInvalidate } from '@/hooks/use-realtime-invalidate';
 import { renderPdfToSlides, SLIDES_SUPPORTED } from '@/lib/pdf-to-slides';
 import { supabase } from '@/lib/supabase';
 import type { LessonSlide, SlideActivityTag, SlidePacingMode } from '@/types/database';
@@ -7,6 +8,10 @@ import type { LessonSlide, SlideActivityTag, SlidePacingMode } from '@/types/dat
 export interface ViewableSlide extends LessonSlide {
   url: string | null;
 }
+
+// The DB column is a plain `text` with a CHECK constraint (not a Postgres enum), so
+// generated types can't narrow it further than `string` — this is the app-side literal union.
+export type SlideTimerCommand = 'idle' | 'running' | 'paused';
 
 export interface SlideStroke {
   id: string;
@@ -39,7 +44,19 @@ export type SlideObject =
   | { id: string; type: 'emoji'; x: number; y: number; size: number; emoji: string }
   | { id: string; type: 'comment'; x: number; y: number; text: string }
   | { id: string; type: 'link'; x: number; y: number; width: number; url: string; label: string }
-  | { id: string; type: 'fill_blank'; x: number; y: number; width: number; height: number; prompt: string; answer: string }
+  | {
+      id: string;
+      type: 'fill_blank';
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      prompt: string;
+      answer: string;
+      /** Manual point weight out of 100; null/absent auto-shares the remaining budget
+       * evenly with the slide's other un-weighted questions — see `effectivePointsMap`. */
+      points?: number | null;
+    }
   | {
       id: string;
       type: 'multiple_choice';
@@ -50,6 +67,7 @@ export type SlideObject =
       prompt: string;
       options: string[];
       correctIndex: number | null;
+      points?: number | null;
     };
 
 // A student's answers to question objects, keyed by the question's SlideObject id. A
@@ -102,6 +120,16 @@ export function useLessonSlides(resourceId: string | null) {
     },
   });
 
+  // Pushes any slide change (most importantly `timer_command`, but also pacing/tag/grading
+  // toggles) to every other open viewer of this lesson — teacher and each student — without
+  // them needing to reload. See use-realtime-invalidate.ts.
+  useRealtimeInvalidate(
+    'lesson_slides',
+    resourceId ? `resource_id=eq.${resourceId}` : null,
+    ['lesson-slides', resourceId],
+    Boolean(resourceId),
+  );
+
   const updateSlide = useMutation({
     mutationFn: async (input: {
       id: string;
@@ -109,17 +137,20 @@ export function useLessonSlides(resourceId: string | null) {
       durationMinutes?: number | null;
       submissionsEnabled?: boolean;
       gradingEnabled?: boolean;
+      timerCommand?: SlideTimerCommand;
     }) => {
       const patch: {
         activity_tag?: SlideActivityTag | null;
         duration_minutes?: number | null;
         submissions_enabled?: boolean;
         grading_enabled?: boolean;
+        timer_command?: SlideTimerCommand;
       } = {};
       if ('activityTag' in input) patch.activity_tag = input.activityTag;
       if ('durationMinutes' in input) patch.duration_minutes = input.durationMinutes;
       if ('submissionsEnabled' in input) patch.submissions_enabled = input.submissionsEnabled;
       if ('gradingEnabled' in input) patch.grading_enabled = input.gradingEnabled;
+      if ('timerCommand' in input) patch.timer_command = input.timerCommand;
 
       const { error } = await supabase.from('lesson_slides').update(patch).eq('id', input.id);
       if (error) throw error;

@@ -21,6 +21,11 @@ export interface McqQuestion {
   choices: string[];
   correctIndex: number;
   explanation: string;
+  /** Point weight out of 100, resolved (never "auto") at the moment the teacher attaches this
+   * quiz — see `TaskPickerOverlay`'s review step, where a teacher can adjust these before
+   * attaching. Optional only for backward compatibility with quizzes attached before this
+   * field existed; `compute_mcq_task_score` falls back to an even share when absent. */
+  points?: number;
 }
 
 // The 3 AI-generated kinds this feature can attach — separate from the older, now-unused

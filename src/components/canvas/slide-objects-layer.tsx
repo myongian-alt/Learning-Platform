@@ -4,6 +4,7 @@ import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-nat
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import type { SlideAnswers, SlideObject, SlideObjectShape } from '@/hooks/queries/use-lesson-slides';
+import { effectivePointsMap, maxAssignablePoints } from '@/lib/slide-grading';
 
 export type PendingObjectSpec =
   | { kind: 'text' }
@@ -98,6 +99,7 @@ export function SlideObjectsLayer({
   // seeding local state once from the prop at mount is safe.
   const [objects, setObjects] = useState(initialObjects);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const pointsMap = effectivePointsMap(objects);
 
   const commit = (next: SlideObject[]) => {
     setObjects(next);
@@ -160,6 +162,8 @@ export function SlideObjectsLayer({
           answerable={answerable}
           answerValue={answers?.[obj.id]}
           onAnswerChange={(value) => onAnswerChange?.(obj.id, value)}
+          effectivePoints={pointsMap.get(obj.id) ?? 0}
+          maxAssignablePoints={maxAssignablePoints(objects, obj.id)}
         />
       ))}
     </Pressable>
@@ -177,6 +181,8 @@ function SlideObjectItem({
   answerable,
   answerValue,
   onAnswerChange,
+  effectivePoints,
+  maxAssignablePoints,
 }: {
   object: SlideObject;
   zoom: number;
@@ -188,6 +194,10 @@ function SlideObjectItem({
   answerable?: boolean;
   answerValue?: string | number;
   onAnswerChange?: (value: string | number) => void;
+  /** Only meaningful for fill_blank/multiple_choice — this question's resolved point weight
+   * (out of 100) and the most its manual `points` could be set to right now. */
+  effectivePoints: number;
+  maxAssignablePoints: number;
 }) {
   // All of x/y/width/height/size below are base (100%-zoom) values, as stored — scaled by
   // zoom only right here at the point of layout, so drag/resize math (further down) can stay
@@ -212,7 +222,13 @@ function SlideObjectItem({
           pointerEvents: 'auto',
         }}
       >
-        <QuestionAnswerContent object={object} zoom={zoom} value={answerValue} onChange={onAnswerChange} />
+        <QuestionAnswerContent
+          object={object}
+          zoom={zoom}
+          value={answerValue}
+          onChange={onAnswerChange}
+          points={effectivePoints}
+        />
       </View>
     );
   }
@@ -280,7 +296,14 @@ function SlideObjectItem({
         style={{ flex: 1 }}
         className={selected ? 'rounded-md ring-2 ring-violet-500' : ''}
       >
-        <ObjectContent object={object} zoom={zoom} selected={selected} onUpdate={onUpdate} />
+        <ObjectContent
+          object={object}
+          zoom={zoom}
+          selected={selected}
+          onUpdate={onUpdate}
+          effectivePoints={effectivePoints}
+          maxAssignablePoints={maxAssignablePoints}
+        />
       </Pressable>
 
       {selected && resizable && (
@@ -292,16 +315,59 @@ function SlideObjectItem({
   );
 }
 
+// A small +/- stepper for a question's manual point weight, plus an "Auto" reset back to
+// evenly sharing the slide's remaining budget (see `effectivePointsMap` in slide-grading.ts).
+// `points` is always the object's current *resolved* value (whether manual or auto-shared),
+// so nudging +/-1 starts from wherever it visually is right now rather than from 0.
+function PointsStepper({
+  points,
+  maxAssignable,
+  onChange,
+}: {
+  points: number;
+  maxAssignable: number;
+  onChange: (points: number | null) => void;
+}) {
+  return (
+    <View className="flex-row items-center gap-1 rounded-md bg-white/80 px-1 py-0.5">
+      <Pressable
+        onPress={() => onChange(Math.max(0, points - 1))}
+        hitSlop={4}
+        className="h-4 w-4 items-center justify-center rounded bg-black/5"
+      >
+        <Feather name="minus" size={9} color="#4b5563" />
+      </Pressable>
+      <Text className="w-8 text-center text-[10px] font-bold text-ink">{points} pts</Text>
+      <Pressable
+        onPress={() => onChange(Math.min(maxAssignable, points + 1))}
+        disabled={points >= maxAssignable}
+        hitSlop={4}
+        style={{ opacity: points >= maxAssignable ? 0.4 : 1 }}
+        className="h-4 w-4 items-center justify-center rounded bg-black/5"
+      >
+        <Feather name="plus" size={9} color="#4b5563" />
+      </Pressable>
+      <Pressable onPress={() => onChange(null)} hitSlop={4} className="ml-0.5">
+        <Text className="text-[9px] font-semibold text-violet-600 underline">Auto</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function ObjectContent({
   object,
   zoom,
   selected,
   onUpdate,
+  effectivePoints,
+  maxAssignablePoints,
 }: {
   object: SlideObject;
   zoom: number;
   selected: boolean;
   onUpdate: (patch: Partial<SlideObject>) => void;
+  effectivePoints: number;
+  maxAssignablePoints: number;
 }) {
   switch (object.type) {
     case 'text':
@@ -362,11 +428,22 @@ function ObjectContent({
     case 'fill_blank':
       return (
         <View className="w-full flex-1 gap-1.5 rounded-lg border border-dashed border-violet-300 bg-violet-50/60 p-2">
-          <View className="flex-row items-center gap-1">
-            <Ionicons name="reader-outline" size={12} color="#7c3aed" />
-            <Text className="text-[10px] font-semibold uppercase tracking-wide text-violet-600">
-              Fill in the blank
-            </Text>
+          <View className="flex-row items-center justify-between gap-1">
+            <View className="flex-row items-center gap-1">
+              <Ionicons name="reader-outline" size={12} color="#7c3aed" />
+              <Text className="text-[10px] font-semibold uppercase tracking-wide text-violet-600">
+                Fill in the blank
+              </Text>
+            </View>
+            {selected ? (
+              <PointsStepper
+                points={effectivePoints}
+                maxAssignable={maxAssignablePoints}
+                onChange={(points) => onUpdate({ points })}
+              />
+            ) : (
+              <Text className="text-[10px] font-bold text-violet-600">{effectivePoints} pts</Text>
+            )}
           </View>
           <TextInput
             value={object.prompt}
@@ -393,11 +470,22 @@ function ObjectContent({
     case 'multiple_choice':
       return (
         <View className="w-full flex-1 gap-1.5 rounded-lg border border-dashed border-blue-300 bg-blue-50/60 p-2">
-          <View className="flex-row items-center gap-1">
-            <Ionicons name="checkbox-outline" size={12} color="#2563eb" />
-            <Text className="text-[10px] font-semibold uppercase tracking-wide text-blue-600">
-              Multiple choice
-            </Text>
+          <View className="flex-row items-center justify-between gap-1">
+            <View className="flex-row items-center gap-1">
+              <Ionicons name="checkbox-outline" size={12} color="#2563eb" />
+              <Text className="text-[10px] font-semibold uppercase tracking-wide text-blue-600">
+                Multiple choice
+              </Text>
+            </View>
+            {selected ? (
+              <PointsStepper
+                points={effectivePoints}
+                maxAssignable={maxAssignablePoints}
+                onChange={(points) => onUpdate({ points })}
+              />
+            ) : (
+              <Text className="text-[10px] font-bold text-blue-600">{effectivePoints} pts</Text>
+            )}
           </View>
           <TextInput
             value={object.prompt}
@@ -462,18 +550,23 @@ function QuestionAnswerContent({
   zoom,
   value,
   onChange,
+  points,
 }: {
   object: Extract<SlideObject, { type: 'fill_blank' } | { type: 'multiple_choice' }>;
   zoom: number;
   value: string | number | undefined;
   onChange?: (value: string | number) => void;
+  points: number;
 }) {
   if (object.type === 'fill_blank') {
     return (
       <View className="w-full flex-1 gap-1.5 rounded-lg bg-violet-50 p-2">
-        <Text style={{ fontSize: 13 * zoom }} className="font-medium text-ink/80">
-          {object.prompt || 'Fill in the blank'}
-        </Text>
+        <View className="flex-row items-start justify-between gap-2">
+          <Text style={{ fontSize: 13 * zoom }} className="flex-1 font-medium text-ink/80">
+            {object.prompt || 'Fill in the blank'}
+          </Text>
+          <Text className="text-[10px] font-bold text-violet-600">{points} pts</Text>
+        </View>
         <TextInput
           value={typeof value === 'string' ? value : ''}
           onChangeText={(text) => onChange?.(text)}
@@ -487,9 +580,12 @@ function QuestionAnswerContent({
 
   return (
     <View className="w-full flex-1 gap-1.5 rounded-lg bg-blue-50 p-2">
-      <Text style={{ fontSize: 13 * zoom }} className="font-medium text-ink/80">
-        {object.prompt || 'Choose one'}
-      </Text>
+      <View className="flex-row items-start justify-between gap-2">
+        <Text style={{ fontSize: 13 * zoom }} className="flex-1 font-medium text-ink/80">
+          {object.prompt || 'Choose one'}
+        </Text>
+        <Text className="text-[10px] font-bold text-blue-600">{points} pts</Text>
+      </View>
       <View className="gap-1">
         {object.options.map((opt, i) => {
           const chosen = value === i;

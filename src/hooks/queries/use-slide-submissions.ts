@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { useRealtimeInvalidate } from '@/hooks/use-realtime-invalidate';
 import { supabase } from '@/lib/supabase';
 import type { SlideSubmission } from '@/types/database';
 
@@ -88,7 +89,14 @@ export function useSlideSubmissions(slideId: string | null) {
         .eq('id', input.submissionId);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['slide-submissions', slideId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['slide-submissions', slideId] });
+      // A grade set here also needs to show up on the class Gradebook and the student's own
+      // Grades tab — both prefix-matched (no classId/studentId available in this hook), so a
+      // grade change doesn't sit stale in either until some unrelated refetch happens to run.
+      queryClient.invalidateQueries({ queryKey: ['gradebook'] });
+      queryClient.invalidateQueries({ queryKey: ['student-grades'] });
+    },
   });
 
   return { ...query, setGrade };
@@ -116,6 +124,15 @@ export function useMySlideSubmission(slideId: string | null, studentId: string |
       return data;
     },
   });
+
+  // Pushes a teacher's grade/feedback to this student's open slide the moment it's set,
+  // without the student needing to reload — see use-realtime-invalidate.ts.
+  useRealtimeInvalidate(
+    'slide_submissions',
+    enabled ? `slide_id=eq.${slideId}` : null,
+    queryKey,
+    enabled,
+  );
 
   const saveAnnotations = useMutation({
     mutationFn: async (annotations: SlideStroke[]) => {

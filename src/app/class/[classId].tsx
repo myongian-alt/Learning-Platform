@@ -42,6 +42,7 @@ import { usePortfolioFiles } from '@/hooks/queries/use-portfolio-files';
 import { usePortfolioFolders } from '@/hooks/queries/use-portfolio-folders';
 import { signOut } from '@/lib/auth-actions';
 import { downloadCsv } from '@/lib/csv-export';
+import { maxAssignableWeight, resolvePointWeights } from '@/lib/slide-grading';
 import { useAuthStore } from '@/store/auth-store';
 import type {
   LessonFileType,
@@ -1377,6 +1378,11 @@ function TaskPickerOverlay({
 }) {
   const { data: aiResources, isLoading, generate, attachCard } = useLessonAiResources(resourceId);
   const [expandedMcqs, setExpandedMcqs] = useState(false);
+  // Manual point overrides for the MCQ review step, keyed by question index — absent means
+  // "auto" (evenly shares the remaining 100-point budget, see resolvePointWeights). Cleared
+  // explicitly whenever a fresh batch is requested (regenerate/try again), since a new set of
+  // questions shouldn't inherit the previous batch's point overrides at the same indices.
+  const [manualPoints, setManualPoints] = useState<Record<number, number>>({});
 
   const status = aiResources?.status;
   const isGenerating = generate.isPending || status === 'pending';
@@ -1384,9 +1390,22 @@ function TaskPickerOverlay({
   const quizizz = aiResources?.quizizz as unknown as QuizizzResource | null;
   const mcqs = aiResources?.mcqs as unknown as McqQuestion[] | null;
 
+  const mcqWeights = mcqs
+    ? resolvePointWeights(mcqs.map((_, i) => ({ id: String(i), points: manualPoints[i] ?? null })))
+    : new Map<string, number>();
+
+  const regenerate = () => {
+    setManualPoints({});
+    generate.mutate();
+  };
+
   const handleAttach = (kind: AiTaskKind, content: AttachedCardContent, label: string) => {
+    const resolvedContent =
+      kind === 'custom_mcqs'
+        ? (content as McqQuestion[]).map((mcq, i) => ({ ...mcq, points: mcqWeights.get(String(i)) }))
+        : content;
     attachCard.mutate(
-      { kind, content },
+      { kind, content: resolvedContent },
       {
         onSuccess: () => onAttached(label),
         onError: () => Alert.alert('Could not attach', "Couldn't attach this resource to the lesson."),
@@ -1442,7 +1461,7 @@ function TaskPickerOverlay({
                 5 custom MCQs tailored to it.
               </Text>
               <Pressable
-                onPress={() => generate.mutate()}
+                onPress={regenerate}
                 accessibilityLabel="Generate AI resources"
                 className="flex-row items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3"
               >
@@ -1522,11 +1541,47 @@ function TaskPickerOverlay({
                     </Text>
                   </Pressable>
                   {expandedMcqs &&
-                    mcqs.map((mcq, i) => (
+                    mcqs.map((mcq, i) => {
+                      const weight = mcqWeights.get(String(i)) ?? 0;
+                      const maxWeight = maxAssignableWeight(
+                        mcqs.map((_, wi) => ({ id: String(wi), points: manualPoints[wi] ?? null })),
+                        String(i),
+                      );
+                      return (
                       <View key={i} className="gap-1 rounded-lg bg-white/70 p-2.5">
-                        <Text className="text-xs font-semibold text-ink">
-                          {i + 1}. {mcq.question}
-                        </Text>
+                        <View className="flex-row items-start justify-between gap-2">
+                          <Text className="flex-1 text-xs font-semibold text-ink">
+                            {i + 1}. {mcq.question}
+                          </Text>
+                          <View className="flex-row items-center gap-1 rounded-md bg-black/5 px-1 py-0.5">
+                            <Pressable
+                              onPress={() =>
+                                setManualPoints((prev) => ({ ...prev, [i]: Math.max(0, weight - 1) }))
+                              }
+                              hitSlop={4}
+                              className="h-4 w-4 items-center justify-center rounded bg-white"
+                            >
+                              <Feather name="minus" size={9} color="#4b5563" />
+                            </Pressable>
+                            <Text className="w-8 text-center text-[10px] font-bold text-ink">
+                              {weight} pts
+                            </Text>
+                            <Pressable
+                              onPress={() =>
+                                setManualPoints((prev) => ({
+                                  ...prev,
+                                  [i]: Math.min(maxWeight, weight + 1),
+                                }))
+                              }
+                              disabled={weight >= maxWeight}
+                              style={{ opacity: weight >= maxWeight ? 0.4 : 1 }}
+                              hitSlop={4}
+                              className="h-4 w-4 items-center justify-center rounded bg-white"
+                            >
+                              <Feather name="plus" size={9} color="#4b5563" />
+                            </Pressable>
+                          </View>
+                        </View>
                         {mcq.choices.map((choice, ci) => (
                           <Text
                             key={ci}
@@ -1540,11 +1595,12 @@ function TaskPickerOverlay({
                         ))}
                         <Text className="text-[10px] italic text-ink/40">{mcq.explanation}</Text>
                       </View>
-                    ))}
+                      );
+                    })}
                 </View>
               )}
 
-              <Pressable onPress={() => generate.mutate()} className="items-center py-2">
+              <Pressable onPress={regenerate} className="items-center py-2">
                 <Text className="text-xs font-semibold text-violet-700">Regenerate</Text>
               </Pressable>
             </>

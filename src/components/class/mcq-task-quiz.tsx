@@ -30,6 +30,11 @@ export function McqTaskQuizModal({
   const allAnswered = mcqs.every((_, i) => draftAnswers[String(i)] !== undefined);
   const submittedAnswers = (submission?.answers ?? {}) as Record<string, number>;
 
+  // Any quiz attached before per-question points existed has no `points` on its questions —
+  // this mirrors the server trigger's own fallback (an even share of 100) purely for display,
+  // since the actual score already comes from the server either way.
+  const displayPoints = (q: McqQuestion) => q.points ?? Math.round(100 / mcqs.length);
+
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
       <View className="flex-1 items-center justify-center bg-black/40 p-6">
@@ -64,11 +69,20 @@ export function McqTaskQuizModal({
               </View>
               {mcqs.map((q, i) => {
                 const chosen = submittedAnswers[String(i)];
+                const possible = displayPoints(q);
+                const earned = chosen === q.correctIndex ? possible : 0;
                 return (
                   <View key={i} className="gap-1.5 rounded-xl border border-black/10 p-3">
-                    <Text className="text-sm font-semibold text-ink">
-                      {i + 1}. {q.question}
-                    </Text>
+                    <View className="flex-row items-start justify-between gap-2">
+                      <Text className="flex-1 text-sm font-semibold text-ink">
+                        {i + 1}. {q.question}
+                      </Text>
+                      <Text
+                        className={`text-xs font-bold ${earned > 0 ? 'text-emerald-700' : 'text-ink/40'}`}
+                      >
+                        {earned}/{possible} pts
+                      </Text>
+                    </View>
                     {q.choices.map((choice, ci) => (
                       <Text
                         key={ci}
@@ -93,9 +107,14 @@ export function McqTaskQuizModal({
             <ScrollView contentContainerClassName="gap-4">
               {mcqs.map((q, i) => (
                 <View key={i} className="gap-1.5">
-                  <Text className="text-sm font-semibold text-ink">
-                    {i + 1}. {q.question}
-                  </Text>
+                  <View className="flex-row items-start justify-between gap-2">
+                    <Text className="flex-1 text-sm font-semibold text-ink">
+                      {i + 1}. {q.question}
+                    </Text>
+                    <Text className="text-xs font-bold text-violet-600">
+                      {displayPoints(q)} pts
+                    </Text>
+                  </View>
                   {q.choices.map((choice, ci) => {
                     const selected = draftAnswers[String(i)] === ci;
                     return (

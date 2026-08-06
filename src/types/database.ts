@@ -768,6 +768,7 @@ export type Database = {
           resource_id: string;
           storage_path: string | null;
           submissions_enabled: boolean;
+          timer_command: string;
         };
         Insert: {
           activity_tag?: Database['public']['Enums']['slide_activity_tag'] | null;
@@ -782,6 +783,7 @@ export type Database = {
           resource_id: string;
           storage_path?: string | null;
           submissions_enabled?: boolean;
+          timer_command?: string;
         };
         Update: {
           activity_tag?: Database['public']['Enums']['slide_activity_tag'] | null;
@@ -796,6 +798,7 @@ export type Database = {
           resource_id?: string;
           storage_path?: string | null;
           submissions_enabled?: boolean;
+          timer_command?: string;
         };
         Relationships: [
           {
