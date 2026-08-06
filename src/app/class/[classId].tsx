@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StudentClassView } from '@/components/class/student-class-view';
 import { TEACHER_SIDEBAR_ITEMS, TeacherSidebar } from '@/components/layout/teacher-sidebar';
 import { WeekFolderCard, weekColor } from '@/components/lessons/week-folder';
+import { ClassReportsDashboard } from '@/components/reports/class-reports-dashboard';
 import { SLIDE_TAGS, SlideViewerModal } from '@/components/slides/slide-viewer';
 import { useClassAssignments } from '@/hooks/queries/use-class-assignments';
 import { useClassDetail } from '@/hooks/queries/use-class-detail';
@@ -55,7 +56,7 @@ const FILE_TYPE_META: Record<
   link: { icon: 'link', color: '#64748b', label: 'Link' },
 };
 
-type Section = 'lessons' | 'quizzes' | 'gradebook' | 'students' | 'groups' | 'settings';
+type Section = 'lessons' | 'quizzes' | 'reports' | 'gradebook' | 'students' | 'groups' | 'settings';
 
 const AI_TASK_META: Record<
   AiTaskKind,
@@ -149,7 +150,6 @@ export default function ClassLessonsScreen() {
   const handleSidebarSelect = (key: string) => {
     if (key === 'classes') return router.push('/classes');
     if (key === 'assignments') return router.push('/(teacher)/assignments');
-    if (key === 'reports') return router.push('/(teacher)/reports');
     setTaskPickerOpen(false);
     setTaskPickerWeek(null);
     setSection(key as Section);
@@ -302,6 +302,18 @@ export default function ClassLessonsScreen() {
                 title="Quizzes & Games"
                 description="Interactive quizzes, polls, and game-based review are on the roadmap."
               />
+            )}
+            {section === 'reports' && (
+              <>
+                <View>
+                  <Text className="text-2xl font-bold text-ink">Reports</Text>
+                  <Text className="text-sm text-ink/50">
+                    Holistic, live analytics for this class — trends, distribution, activity
+                    strengths, engagement, and who needs attention.
+                  </Text>
+                </View>
+                <ClassReportsDashboard classId={classId} />
+              </>
             )}
             {section === 'gradebook' && <GradebookSection classId={classId} />}
             {section === 'groups' && (
