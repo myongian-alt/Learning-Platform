@@ -168,6 +168,45 @@ export function useStudentGrades() {
         }
       }
 
+      if (classIds.length > 0) {
+        const { data: customColumns, error: customColumnsError } = await supabase
+          .from('gradebook_custom_columns')
+          .select('id, class_id, label')
+          .in('class_id', classIds);
+        if (customColumnsError) throw customColumnsError;
+        const customColumnIds = (customColumns ?? []).map((c) => c.id);
+
+        const { data: customScores, error: customScoresError } =
+          customColumnIds.length > 0
+            ? await supabase
+                .from('gradebook_custom_scores')
+                .select('id, column_id, score, updated_at')
+                .eq('student_id', studentId!)
+                .in('column_id', customColumnIds)
+            : { data: [], error: null };
+        if (customScoresError) throw customScoresError;
+
+        const customColumnById = new Map((customColumns ?? []).map((c) => [c.id, c]));
+        for (const score of customScores ?? []) {
+          if (score.score === null || score.score === undefined) continue;
+          const column = customColumnById.get(score.column_id);
+          if (!column) continue;
+          const percent = Number(score.score);
+          items.push({
+            key: `custom:${score.id}`,
+            title: column.label,
+            meta: classNameById.get(column.class_id) ?? 'Class',
+            updatedAt: score.updated_at,
+            tag: 'Marked',
+            scoreLabel: `${percent}%`,
+            percent,
+            feedback: null,
+            detail: null,
+            href: `/class/${column.class_id}` as Href,
+          });
+        }
+      }
+
       const { data: legacySubmissions, error: legacyError } = await supabase
         .from('submissions')
         .select(
