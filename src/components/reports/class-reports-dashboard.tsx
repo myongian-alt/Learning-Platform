@@ -1,6 +1,8 @@
 import { ActivityIndicator, Text, View } from 'react-native';
 
 import { useClassReports } from '@/hooks/queries/use-class-reports';
+import { useGradebook } from '@/hooks/queries/use-gradebook';
+import { downloadCsv } from '@/lib/csv-export';
 
 import { ActivityRadarChart } from './activity-radar-chart';
 import { AtRiskList } from './at-risk-list';
@@ -32,6 +34,22 @@ function SectionCard({
 
 export function ClassReportsDashboard({ classId }: { classId: string }) {
   const reports = useClassReports(classId);
+  // Reused rather than re-derived: the same labeled columns ("W1L1 Ind Activity", ...)
+  // that back the Gradebook grid, so an individual student's exported report uses the exact
+  // same item names a teacher already sees there — one labeling scheme, not two.
+  const gradebook = useGradebook(classId);
+
+  const handleExportStudent = (studentId: string, studentName: string) => {
+    const columns = gradebook.data?.columns ?? [];
+    const row = gradebook.data?.rows.find((r) => r.studentId === studentId);
+    if (!row) return;
+    const header = ['Item', 'Score'];
+    const body = columns.map((c) => [
+      c.label,
+      row.scores[c.id] !== null ? `${row.scores[c.id]}%` : 'Not submitted',
+    ]);
+    downloadCsv(`${studentName.replace(/\s+/g, '-').toLowerCase()}-report.csv`, [header, ...body]);
+  };
 
   if (reports.isLoading) {
     return (
@@ -124,7 +142,7 @@ export function ClassReportsDashboard({ classId }: { classId: string }) {
               )}
             </SectionCard>
             <SectionCard title="Leaderboard" subtitle="Ranked by average score">
-              <StudentLeaderboard data={data.leaderboard} />
+              <StudentLeaderboard data={data.leaderboard} onExport={handleExportStudent} />
             </SectionCard>
           </View>
 

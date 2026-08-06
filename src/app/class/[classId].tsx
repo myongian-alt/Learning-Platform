@@ -38,6 +38,7 @@ import { useLessonAiResources } from '@/hooks/queries/use-lesson-ai-resources';
 import { useLessonResources } from '@/hooks/queries/use-lesson-resources';
 import { useLessonSlides } from '@/hooks/queries/use-lesson-slides';
 import { signOut } from '@/lib/auth-actions';
+import { downloadCsv } from '@/lib/csv-export';
 import { useAuthStore } from '@/store/auth-store';
 import type { LessonFileType, LessonResource } from '@/types/database';
 
@@ -1598,13 +1599,34 @@ function GradebookSection({ classId }: { classId: string }) {
   const columns = gradebook.data?.columns ?? [];
   const rows = gradebook.data?.rows ?? [];
 
+  const handleExportCsv = () => {
+    const header = ['Student', ...columns.map((c) => c.label)];
+    const body = rows.map((row) => [
+      row.studentName,
+      ...columns.map((c) => (row.scores[c.id] !== null ? `${row.scores[c.id]}%` : '')),
+    ]);
+    downloadCsv(`gradebook-${classId}.csv`, [header, ...body]);
+  };
+
   return (
     <>
-      <View>
-        <Text className="text-2xl font-bold text-ink">Gradebook</Text>
-        <Text className="text-sm text-ink/50">
-          Every graded slide and quiz, synced live from student work.
-        </Text>
+      <View className="flex-row items-start justify-between gap-3">
+        <View>
+          <Text className="text-2xl font-bold text-ink">Gradebook</Text>
+          <Text className="text-sm text-ink/50">
+            Every graded slide and quiz, synced live from student work.
+          </Text>
+        </View>
+        {columns.length > 0 && (
+          <Pressable
+            onPress={handleExportCsv}
+            accessibilityLabel="Export gradebook as CSV"
+            className="flex-row items-center gap-1.5 rounded-lg border border-black/10 bg-white px-3 py-2"
+          >
+            <Feather name="download" size={13} color="#4b5563" />
+            <Text className="text-xs font-semibold text-ink/70">Export CSV</Text>
+          </Pressable>
+        )}
       </View>
 
       {gradebook.isLoading && <ActivityIndicator />}
