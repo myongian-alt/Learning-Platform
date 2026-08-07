@@ -5,7 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StudentShell } from '@/components/layout/student-shell';
 import { useStudentDashboard } from '@/hooks/queries/use-student-dashboard';
 
-const CLASS_ACCENTS = ['#302BB8', '#4B45E0', '#8C8BF0', '#4B7BF5', '#2E6B57'];
+// Same accent set as the teacher's own class cards (src/app/classes.tsx's CARD_ACCENTS).
+const CLASS_ACCENTS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#06b6d4'];
 
 export default function StudentProgressScreen() {
   const dashboard = useStudentDashboard();
@@ -14,13 +15,11 @@ export default function StudentProgressScreen() {
 
   return (
     <StudentShell>
-      <SafeAreaView className="flex-1 bg-desk-canvas">
+      <SafeAreaView className="flex-1 bg-paper">
         <ScrollView className="flex-1" contentContainerClassName="pb-11">
           <View className="w-full max-w-[1180px] px-[34px] pt-[34px]" style={{ alignSelf: 'center' }}>
-            <Text className="font-poppins-semibold text-[30px] tracking-tighter text-desk-body">
-              Your progress
-            </Text>
-            <Text className="mt-1.5 max-w-[52ch] font-desk-sans text-[14.5px] leading-[1.5] text-desk-body2">
+            <Text className="text-[30px] font-bold tracking-tighter text-ink">Your progress</Text>
+            <Text className="mt-1.5 max-w-[52ch] text-[14.5px] leading-[1.5] text-ink/60">
               Keep the streak going.
             </Text>
 
@@ -28,44 +27,41 @@ export default function StudentProgressScreen() {
 
             <View className="mt-6 flex-row flex-wrap gap-4">
               <View
-                className="justify-center gap-1.5 rounded bg-desk-amber p-6"
+                className="justify-center gap-1.5 rounded-2xl border border-black/15 bg-amber-50 p-6 shadow-sm"
                 style={{ minWidth: 220, flex: 1 }}
               >
-                <Text className="font-desk-sans-bold text-xs uppercase tracking-[0.1em] text-desk-amberText">
+                <Text className="text-xs font-bold uppercase tracking-[0.1em] text-amber-800">
                   Current streak
                 </Text>
-                <Text className="font-poppins-semibold text-5xl tracking-tighter text-desk-amberText">
+                <Text className="text-5xl font-bold tracking-tighter text-amber-800">
                   {data?.streak ?? 0}
                 </Text>
-                <Text className="font-desk-sans-semibold text-sm text-desk-amberText">
+                <Text className="text-sm font-semibold text-amber-800">
                   school days in a row
                 </Text>
               </View>
 
               <View
-                className="gap-3 rounded border border-desk-hairline bg-desk-surface p-6"
+                className="gap-3 rounded-2xl border border-black/15 bg-white p-6 shadow-sm"
                 style={{ minWidth: 260, flex: 1 }}
               >
-                <Text className="font-poppins-semibold text-[15px] tracking-tighter text-desk-body">
+                <Text className="text-[15px] font-bold tracking-tighter text-ink">
                   Completion by class
                 </Text>
                 <View className="gap-3">
                   {(data?.classes ?? []).map((c, i) => (
                     <View key={c.id} className="gap-1.5">
                       <View className="flex-row items-center justify-between">
-                        <Text
-                          className="font-desk-sans-semibold text-[13px] text-desk-body2"
-                          numberOfLines={1}
-                        >
+                        <Text className="text-[13px] font-semibold text-ink/70" numberOfLines={1}>
                           {c.name}
                         </Text>
-                        <Text className="font-desk-sans-semibold text-[13px] text-desk-body2">
+                        <Text className="text-[13px] font-semibold text-ink/70">
                           {c.percentComplete}%
                         </Text>
                       </View>
-                      <View className="h-1 bg-desk-hairline">
+                      <View className="h-1 rounded-full bg-black/10">
                         <View
-                          className="h-full"
+                          className="h-full rounded-full"
                           style={{
                             width: `${c.percentComplete}%`,
                             backgroundColor: CLASS_ACCENTS[i % CLASS_ACCENTS.length],
@@ -75,35 +71,31 @@ export default function StudentProgressScreen() {
                     </View>
                   ))}
                   {(data?.classes.length ?? 0) === 0 && (
-                    <Text className="font-desk-sans text-sm text-desk-muted3">
-                      Join a class to see progress here.
-                    </Text>
+                    <Text className="text-sm text-ink/50">Join a class to see progress here.</Text>
                   )}
                 </View>
               </View>
 
               <View
-                className="gap-3 rounded border border-desk-hairline bg-desk-surface p-6"
+                className="gap-3 rounded-2xl border border-black/15 bg-white p-6 shadow-sm"
                 style={{ minWidth: 260, flex: 1 }}
               >
-                <Text className="font-poppins-semibold text-[15px] tracking-tighter text-desk-body">
-                  Badges
-                </Text>
+                <Text className="text-[15px] font-bold tracking-tighter text-ink">Badges</Text>
                 <View className="flex-row flex-wrap gap-2.5">
                   {(data?.badges ?? []).map((badge) => (
                     <View
                       key={badge.key}
-                      className="items-center gap-1.5 rounded-xl px-3.5 py-3"
-                      style={{ backgroundColor: badge.earned ? '#F7EAD9' : '#EDE8DF', width: 92 }}
+                      className="items-center gap-1.5 rounded-xl border border-black/15 px-3.5 py-3"
+                      style={{ backgroundColor: badge.earned ? '#fef3c7' : '#f3f4f6', width: 92 }}
                     >
                       <Feather
                         name="award"
                         size={20}
-                        color={badge.earned ? '#C56A2B' : '#8F897D'}
+                        color={badge.earned ? '#b45309' : '#9ca3af'}
                       />
                       <Text
-                        className="max-w-[76px] text-center font-desk-sans-semibold text-[10.5px]"
-                        style={{ color: badge.earned ? '#7A4415' : '#8F897D' }}
+                        className="max-w-[76px] text-center text-[10.5px] font-semibold"
+                        style={{ color: badge.earned ? '#92400e' : '#9ca3af' }}
                       >
                         {badge.label}
                       </Text>
@@ -113,8 +105,8 @@ export default function StudentProgressScreen() {
               </View>
             </View>
 
-            <View className="mt-6 gap-4 rounded border border-desk-hairline bg-desk-surface p-6">
-              <Text className="font-poppins-semibold text-[15px] tracking-tighter text-desk-body">
+            <View className="mt-6 gap-4 rounded-2xl border border-black/15 bg-white p-6 shadow-sm">
+              <Text className="text-[15px] font-bold tracking-tighter text-ink">
                 Activity, last 8 weeks
               </Text>
               <View className="flex-row items-end gap-2.5" style={{ height: 140 }}>
@@ -131,12 +123,10 @@ export default function StudentProgressScreen() {
                         className="w-full rounded-t"
                         style={{
                           height: `${heightPct}%`,
-                          backgroundColor: isCurrent ? '#302BB8' : '#8C8BF0',
+                          backgroundColor: isCurrent ? '#7c3aed' : '#c4b5fd',
                         }}
                       />
-                      <Text className="font-desk-sans-bold text-[10px] text-desk-muted3">
-                        W{bucket.label}
-                      </Text>
+                      <Text className="text-[10px] font-bold text-ink/40">W{bucket.label}</Text>
                     </View>
                   );
                 })}

@@ -2,8 +2,8 @@ import { type Href, usePathname, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
-import { DeskSidebar } from '@/components/layout/desk-sidebar';
 import { STUDENT_SIDEBAR_ITEMS } from '@/components/layout/student-sidebar';
+import { TeacherSidebar } from '@/components/layout/teacher-sidebar';
 import { useIsWideScreen } from '@/hooks/use-is-wide-screen';
 import { useStudentDashboard } from '@/hooks/queries/use-student-dashboard';
 import { signOut } from '@/lib/auth-actions';
@@ -25,10 +25,13 @@ const KEY_BY_PATH: Record<string, string> = {
   '/progress': 'progress',
 };
 
-// Wraps every top-level student screen. On wide viewports it shows the same
-// persistent dark sidebar shell the teacher side uses (via the shared
-// `TeacherSidebar` component); on narrow viewports it renders children as-is and
-// leaves navigation to the bottom tab bar in `(student)/_layout.tsx`.
+// Wraps every top-level student screen. On wide viewports it shows the same persistent
+// sidebar shell the teacher side uses (`TeacherSidebar`, also shared by the per-class
+// `StudentClassView`) — this used to be a separate `DeskSidebar` with its own dark/amber
+// palette, but the "Enrolled classes" and streak widgets it carried are already shown in
+// full on My Classes and Progress, so nothing is lost by using the same nav shell as
+// everywhere else. On narrow viewports it renders children as-is and leaves navigation to
+// the bottom tab bar in `(student)/_layout.tsx`.
 export function StudentShell({ children }: { children: ReactNode }) {
   const isWide = useIsWideScreen();
   const router = useRouter();
@@ -41,17 +44,15 @@ export function StudentShell({ children }: { children: ReactNode }) {
   const activeKey = KEY_BY_PATH[pathname] ?? 'home';
 
   return (
-    <View className="flex-1 flex-row bg-desk-canvas">
-      <DeskSidebar
+    <View className="flex-1 flex-row bg-paper">
+      <TeacherSidebar
         items={STUDENT_SIDEBAR_ITEMS}
         activeKey={activeKey}
         onSelect={(key) => router.push(ROUTE_BY_KEY[key] ?? ROUTE_BY_KEY.home)}
-        onSelectClass={(classId) => router.push(`/class/${classId}` as Href)}
-        studentName={profile?.full_name ?? 'Student'}
+        teacherName={profile?.full_name ?? 'Student'}
+        avatarUrl={profile?.avatar_url}
         roleLabel="Student"
-        classes={dashboard.data?.classes ?? []}
-        streak={dashboard.data?.streak ?? 0}
-        todoCount={dashboard.data?.dueSoon.length ?? 0}
+        badges={{ todo: dashboard.data?.dueSoon.length ?? 0 }}
         onProfilePress={() => signOut()}
       />
       <View className="flex-1">{children}</View>

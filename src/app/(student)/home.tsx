@@ -12,7 +12,9 @@ import { useStudentDashboard } from '@/hooks/queries/use-student-dashboard';
 import { joinClassWithCode, signOut } from '@/lib/auth-actions';
 import { useAuthStore } from '@/store/auth-store';
 
-const CLASS_RULE_COLORS = ['#302BB8', '#4B45E0', '#8C8BF0', '#4B7BF5', '#2E6B57'];
+// Same accent set as the teacher's own class cards (src/app/classes.tsx's CARD_ACCENTS) so a
+// class's color-coding is consistent whichever role is looking at it.
+const CLASS_ACCENTS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#06b6d4'];
 
 function todayLine() {
   return new Date().toLocaleDateString('en-US', {
@@ -65,29 +67,29 @@ export default function StudentHomeScreen() {
 
   return (
     <StudentShell>
-      <SafeAreaView className="flex-1 bg-desk-canvas">
+      <SafeAreaView className="flex-1 bg-paper">
         <ScrollView className="flex-1" contentContainerClassName="pb-11">
           {/* Top bar */}
-          <View className="flex-row flex-wrap items-center justify-between gap-4 border-b border-desk-hairline px-[34px] py-3.5">
+          <View className="flex-row flex-wrap items-center justify-between gap-4 border-b border-black/5 bg-white px-[34px] py-3.5">
             <View className="max-w-[320px] flex-1 flex-row items-center gap-2" style={{ minWidth: 220 }}>
-              <Feather name="search" size={15} color="#9C968B" />
+              <Feather name="search" size={15} color="#9ca3af" />
               <TextInput
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 placeholder="Search your classes…"
-                placeholderTextColor="#9C968B"
-                className="flex-1 font-desk-sans text-[13.5px] text-desk-body"
+                placeholderTextColor="#9ca3af"
+                className="flex-1 text-[13.5px] text-ink"
               />
             </View>
             <View className="flex-row items-center gap-3.5">
-              <Text className="font-desk-sans-semibold text-xs uppercase tracking-[0.1em] text-desk-muted3">
+              <Text className="text-xs font-semibold uppercase tracking-[0.1em] text-ink/40">
                 {todayLine()}
               </Text>
-              <View className="h-[33px] w-[33px] items-center justify-center rounded-lg border border-desk-hairline">
-                <Feather name="bell" size={15} color="#1A1917" />
+              <View className="h-[33px] w-[33px] items-center justify-center rounded-lg border border-black/15">
+                <Feather name="bell" size={15} color="#1a1a2e" />
                 {dueSoon.length > 0 && (
                   <View
-                    className="absolute h-1.5 w-1.5 rounded-full bg-desk-alert"
+                    className="absolute h-1.5 w-1.5 rounded-full bg-red-500"
                     style={{ top: 6, right: 7 }}
                   />
                 )}
@@ -95,7 +97,7 @@ export default function StudentHomeScreen() {
               {/* Always-visible sign-out: the sidebar's profile row (also wired to
                   sign-out) only renders on wide screens, so this stays as the one
                   reachable affordance on narrow/tab-bar layouts. */}
-              <Text onPress={() => signOut()} className="font-desk-sans text-[13px] text-desk-muted3">
+              <Text onPress={() => signOut()} className="text-[13px] text-ink/50">
                 Sign out
               </Text>
             </View>
@@ -105,52 +107,51 @@ export default function StudentHomeScreen() {
             {/* Greeting + stats */}
             <View className="flex-row flex-wrap items-end justify-between gap-x-8 gap-y-4.5">
               <View className="flex-1" style={{ minWidth: 300 }}>
-                <Text className="font-poppins-semibold text-[34px] leading-[1.1] tracking-tighter text-desk-body">
+                <Text className="text-[34px] font-bold leading-[1.1] tracking-tighter text-ink">
                   Hi, {firstName}.
                 </Text>
-                <Text className="mt-1.5 max-w-[52ch] font-desk-sans text-[14.5px] leading-[1.5] text-desk-body2">
+                <Text className="mt-1.5 max-w-[52ch] text-[14.5px] leading-[1.5] text-ink/60">
                   {allClasses.length === 0
-                    ? 'Join a class below to see it on your desk.'
+                    ? 'Join a class below to get started.'
                     : dueSoon.length > 0
-                      ? `${allClasses.length} ${allClasses.length === 1 ? 'class' : 'classes'} on your desk, ${dueSoon.length} ${dueSoon.length === 1 ? 'task' : 'tasks'} still open.`
-                      : `${allClasses.length} ${allClasses.length === 1 ? 'class' : 'classes'} on your desk — you're all caught up.`}
+                      ? `${allClasses.length} ${allClasses.length === 1 ? 'class' : 'classes'}, ${dueSoon.length} ${dueSoon.length === 1 ? 'task' : 'tasks'} still open.`
+                      : `${allClasses.length} ${allClasses.length === 1 ? 'class' : 'classes'} — you're all caught up.`}
                 </Text>
               </View>
               <View className="flex-row gap-2.5">
-                <View className="min-w-[92px] rounded border border-desk-indigoTintBorder bg-desk-indigoTint px-4 py-2.5">
-                  <Text className="font-poppins-semibold text-[26px] leading-none text-desk-indigo">
+                <View className="min-w-[92px] rounded-2xl border border-black/15 bg-white px-4 py-2.5 shadow-sm">
+                  <Text className="text-[26px] font-bold leading-none text-violet-700">
                     {allClasses.length}
                   </Text>
-                  <Text className="mt-1 text-[11.5px] text-desk-indigo">classes</Text>
+                  <Text className="mt-1 text-[11.5px] text-ink/50">classes</Text>
                 </View>
-                <View className="min-w-[92px] rounded border border-desk-indigoTintBorder bg-desk-indigoTint px-4 py-2.5">
-                  <Text className="font-poppins-semibold text-[26px] leading-none text-desk-indigo">
+                <View className="min-w-[92px] rounded-2xl border border-black/15 bg-white px-4 py-2.5 shadow-sm">
+                  <Text className="text-[26px] font-bold leading-none text-violet-700">
                     {dueSoon.length}
                   </Text>
-                  <Text className="mt-1 text-[11.5px] text-desk-indigo">open tasks</Text>
+                  <Text className="mt-1 text-[11.5px] text-ink/50">open tasks</Text>
                 </View>
-                <View className="min-w-[92px] rounded border border-desk-indigoTintBorder bg-desk-indigoTint px-4 py-2.5">
-                  <Text className="font-poppins-semibold text-[26px] leading-none text-desk-indigo">
+                <View className="min-w-[92px] rounded-2xl border border-black/15 bg-white px-4 py-2.5 shadow-sm">
+                  <Text className="text-[26px] font-bold leading-none text-violet-700">
                     {dashboard.data?.averageScore != null ? dashboard.data.averageScore : '—'}
                     {dashboard.data?.averageScore != null && <Text className="text-base">%</Text>}
                   </Text>
-                  <Text className="mt-1 text-[11.5px] text-desk-indigo">term average</Text>
+                  <Text className="mt-1 text-[11.5px] text-ink/50">term average</Text>
                 </View>
               </View>
             </View>
 
             {/* Join a class */}
-            <View className="mt-[22px] flex-row flex-wrap items-center gap-6 rounded bg-desk-indigo px-7 py-[26px]">
+            <View className="mt-[22px] flex-row flex-wrap items-center gap-6 rounded-2xl bg-violet-600 px-7 py-[26px] shadow-sm">
               <View className="flex-1" style={{ minWidth: 300 }}>
-                <Text className="font-desk-sans-bold text-[11px] uppercase tracking-[0.16em] text-desk-indigoOnDark">
+                <Text className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/70">
                   Start here
                 </Text>
-                <Text className="mt-2 font-poppins-semibold text-[30px] tracking-tighter text-white">
+                <Text className="mt-2 text-[30px] font-bold tracking-tighter text-white">
                   Join a class
                 </Text>
-                <Text className="mt-2 max-w-[40ch] font-desk-sans text-sm leading-[1.5] text-desk-indigoOnDark2">
-                  Enter the six-character code your teacher gave you. It lands on your desk right
-                  away.
+                <Text className="mt-2 max-w-[40ch] text-sm leading-[1.5] text-white/80">
+                  Enter the six-character code your teacher gave you to join right away.
                 </Text>
               </View>
               <View className="max-w-[420px] flex-1" style={{ minWidth: 260 }}>
@@ -159,29 +160,27 @@ export default function StudentHomeScreen() {
                     value={joinCode}
                     onChangeText={(t) => setJoinCode(t.toUpperCase())}
                     placeholder="7F3K2A"
-                    placeholderTextColor="#A7A299"
+                    placeholderTextColor="#9ca3af"
                     autoCapitalize="characters"
                     autoCorrect={false}
-                    className="flex-1 rounded font-poppins-semibold text-[19px] tracking-[0.22em] text-desk-body"
+                    className="flex-1 rounded-xl text-[19px] font-bold tracking-[0.22em] text-ink"
                     style={{ backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 15 }}
                   />
                   <Pressable
                     onPress={handleJoin}
                     disabled={isJoining || !joinCode.trim()}
-                    className="items-center justify-center rounded bg-desk-amber px-[26px] py-[15px]"
+                    className="items-center justify-center rounded-xl bg-white px-[26px] py-[15px]"
                     style={{ opacity: isJoining || !joinCode.trim() ? 0.6 : 1 }}
                   >
                     {isJoining ? (
-                      <ActivityIndicator color="#1A1200" />
+                      <ActivityIndicator color="#7c3aed" />
                     ) : (
-                      <Text className="font-poppins-semibold text-[15px] text-desk-amberText">
-                        Join
-                      </Text>
+                      <Text className="text-[15px] font-bold text-violet-700">Join</Text>
                     )}
                   </Pressable>
                 </View>
                 {joinError && (
-                  <Text className="mt-2 font-desk-sans text-[13px] text-red-200">{joinError}</Text>
+                  <Text className="mt-2 text-[13px] text-red-200">{joinError}</Text>
                 )}
               </View>
             </View>
@@ -191,27 +190,27 @@ export default function StudentHomeScreen() {
             {live && (
               <Link href={`/class/${live.classId}` as Href} asChild>
                 <Pressable
-                  className="mt-2.5 flex-row flex-wrap items-center gap-3.5 rounded border-l-[3px] border-desk-indigo bg-desk-surface px-4 py-2.5"
+                  className="mt-2.5 flex-row flex-wrap items-center gap-3.5 rounded-2xl bg-white px-4 py-2.5 shadow-sm"
                   style={{
                     borderWidth: 1,
-                    borderColor: '#DDD6C8',
+                    borderColor: 'rgba(0,0,0,0.15)',
                     borderLeftWidth: 3,
-                    borderLeftColor: '#302BB8',
+                    borderLeftColor: '#7c3aed',
                     opacity: liveBlinkOn ? 1 : 0.55,
                   }}
                 >
-                  <View className="h-2 w-2 rounded-full bg-desk-indigo" />
-                  <Text className="font-desk-sans-bold text-[11px] uppercase tracking-[0.14em] text-desk-indigo">
+                  <View className="h-2 w-2 rounded-full bg-violet-600" />
+                  <Text className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700">
                     Live now
                   </Text>
-                  <Text className="flex-1 font-desk-sans-semibold text-[13.5px] text-desk-body" numberOfLines={1} style={{ minWidth: 160 }}>
+                  <Text className="flex-1 text-[13.5px] font-semibold text-ink" numberOfLines={1} style={{ minWidth: 160 }}>
                     {live.resourceTitle}
                   </Text>
-                  <Text className="text-[12.5px] text-desk-muted3">
+                  <Text className="text-[12.5px] text-ink/50">
                     Slide {live.slideIndex + 1} of {live.totalSlides}
                     {live.submissionsEnabled ? ' · Submissions open' : ''}
                   </Text>
-                  <Text className="font-desk-sans-semibold text-[13px] text-desk-indigo">Join live lesson →</Text>
+                  <Text className="text-[13px] font-semibold text-violet-700">Join live lesson →</Text>
                 </Pressable>
               </Link>
             )}
@@ -219,76 +218,67 @@ export default function StudentHomeScreen() {
             {/* My classes */}
             <View className="mt-[30px]">
               <View className="flex-row items-baseline justify-between gap-4">
-                <Text className="font-poppins-semibold text-[19px] tracking-tighter text-desk-body">
-                  My classes
-                </Text>
+                <Text className="text-[19px] font-bold tracking-tighter text-ink">My classes</Text>
               </View>
 
               {dashboard.isLoading && <ActivityIndicator style={{ marginTop: 16 }} />}
               {!dashboard.isLoading && classes.length === 0 && (
-                <Text className="mt-3 font-desk-sans text-sm text-desk-muted3">
+                <Text className="mt-3 text-sm text-ink/50">
                   {allClasses.length === 0
                     ? 'Join a class above to see it here.'
                     : `No classes match "${searchQuery.trim()}".`}
                 </Text>
               )}
-              {classes.map((c, i) => (
-                <Link key={c.id} href={`/class/${c.id}` as Href} asChild>
-                  <Pressable
-                    className="flex-row flex-wrap items-center gap-4.5 px-0.5 py-[15px]"
-                    style={{
-                      borderTopWidth: 1.5,
-                      borderTopColor: '#302BB8',
-                      borderBottomWidth: i === classes.length - 1 ? 1.5 : 0,
-                      borderBottomColor: '#302BB8',
-                    }}
-                  >
-                    <Text className="w-[30px] font-poppins-semibold text-[18px] text-desk-indigo">
-                      {String(i + 1).padStart(2, '0')}
-                    </Text>
-                    <View className="flex-1" style={{ minWidth: 210 }}>
-                      <Text className="font-poppins-medium text-base tracking-tighter text-desk-body">
-                        {c.name}
+              <View className="mt-3 gap-2.5">
+                {classes.map((c, i) => (
+                  <Link key={c.id} href={`/class/${c.id}` as Href} asChild>
+                    <Pressable
+                      className="flex-row flex-wrap items-center gap-4.5 rounded-2xl border border-black/15 bg-white px-4 py-[15px] shadow-sm"
+                      style={{ borderLeftColor: CLASS_ACCENTS[i % CLASS_ACCENTS.length], borderLeftWidth: 4 }}
+                    >
+                      <Text className="w-[30px] text-[18px] font-bold text-ink/30">
+                        {String(i + 1).padStart(2, '0')}
                       </Text>
-                      <Text className="mt-0.5 font-desk-sans text-[13px] text-desk-muted3">
-                        {c.totalSlides === 0
-                          ? 'No graded activities yet'
-                          : c.completedSlides === c.totalSlides
-                            ? 'All caught up'
-                            : `${c.totalSlides - c.completedSlides} activities open`}
-                      </Text>
-                    </View>
-                    <View className="max-w-[160px] flex-1 flex-row items-center gap-2.5" style={{ minWidth: 100 }}>
-                      <View className="h-1 flex-1 bg-desk-hairline">
-                        <View
-                          className="h-full"
-                          style={{
-                            width: `${c.percentComplete}%`,
-                            backgroundColor: CLASS_RULE_COLORS[i % CLASS_RULE_COLORS.length],
-                          }}
-                        />
+                      <View className="flex-1" style={{ minWidth: 210 }}>
+                        <Text className="text-base font-bold tracking-tighter text-ink">{c.name}</Text>
+                        <Text className="mt-0.5 text-[13px] text-ink/50">
+                          {c.totalSlides === 0
+                            ? 'No graded activities yet'
+                            : c.completedSlides === c.totalSlides
+                              ? 'All caught up'
+                              : `${c.totalSlides - c.completedSlides} activities open`}
+                        </Text>
                       </View>
-                      <Text className="font-desk-sans-semibold text-[12.5px] text-desk-body2">
-                        {c.percentComplete}%
+                      <View className="max-w-[160px] flex-1 flex-row items-center gap-2.5" style={{ minWidth: 100 }}>
+                        <View className="h-1 flex-1 rounded-full bg-black/10">
+                          <View
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${c.percentComplete}%`,
+                              backgroundColor: CLASS_ACCENTS[i % CLASS_ACCENTS.length],
+                            }}
+                          />
+                        </View>
+                        <Text className="text-[12.5px] font-semibold text-ink/70">
+                          {c.percentComplete}%
+                        </Text>
+                      </View>
+                      <Text className="w-[92px] text-right text-[12.5px] text-ink/50">
+                        {c.completedSlides} / {c.totalSlides} lessons
                       </Text>
-                    </View>
-                    <Text className="w-[92px] text-right font-desk-sans text-[12.5px] text-desk-muted3">
-                      {c.completedSlides} / {c.totalSlides} lessons
-                    </Text>
-                  </Pressable>
-                </Link>
-              ))}
+                    </Pressable>
+                  </Link>
+                ))}
+              </View>
             </View>
 
             {/* Due soon + Badges */}
             <View className="mt-7 flex-row flex-wrap items-start gap-x-7 gap-y-6">
               <View className="flex-1" style={{ minWidth: 460 }}>
-                <Text className="font-poppins-semibold text-[19px] tracking-tighter text-desk-body">
-                  Due soon
-                </Text>
-                <View className="mt-3 rounded border border-desk-indigoTintBorder bg-desk-indigoTint px-2.5 py-1">
+                <Text className="text-[19px] font-bold tracking-tighter text-ink">Due soon</Text>
+                <View className="mt-3 gap-2 rounded-2xl border border-black/15 bg-white px-2.5 py-1 shadow-sm">
                   {dueSoon.length === 0 && (
-                    <Text className="px-0.5 py-4 font-desk-sans text-[13.5px] text-desk-muted3">
+                    <Text className="px-0.5 py-4 text-[13.5px] text-ink/50">
                       Nothing due right now — nice work.
                     </Text>
                   )}
@@ -298,17 +288,17 @@ export default function StudentHomeScreen() {
                         className="flex-row items-center gap-2.5 px-0.5 py-2.5"
                         style={{
                           borderBottomWidth: i === dueSoon.length - 1 ? 0 : 1,
-                          borderBottomColor: '#D3D0F0',
+                          borderBottomColor: 'rgba(0,0,0,0.08)',
                         }}
                       >
                         <View
                           className="h-[15px] w-[15px] items-center justify-center rounded-sm"
-                          style={{ borderWidth: 1.5, borderColor: '#A9A6DC' }}
+                          style={{ borderWidth: 1.5, borderColor: '#c4b5fd' }}
                         />
-                        <Text className="flex-1 font-desk-sans-medium text-[12.5px] text-desk-body" numberOfLines={1}>
+                        <Text className="flex-1 text-[12.5px] font-medium text-ink" numberOfLines={1}>
                           {item.resourceTitle}
                         </Text>
-                        <Text className="font-desk-sans-semibold text-[11px] text-desk-indigoOnDark2" style={{ color: '#5B57A8' }} numberOfLines={1}>
+                        <Text className="text-[11px] font-semibold text-violet-700" numberOfLines={1}>
                           {item.className}
                         </Text>
                       </Pressable>
@@ -319,24 +309,22 @@ export default function StudentHomeScreen() {
 
               {badges.length > 0 && (
                 <View className="flex-1 max-w-[320px]" style={{ minWidth: 240 }}>
-                  <Text className="font-poppins-semibold text-[15px] tracking-tighter text-desk-body">
-                    Badges
-                  </Text>
+                  <Text className="text-[15px] font-bold tracking-tighter text-ink">Badges</Text>
                   <View className="mt-2.5 flex-row flex-wrap gap-2.5">
                     {badges.map((badge) => (
                       <View
                         key={badge.key}
-                        className="items-center gap-1.5 rounded-xl px-3.5 py-3"
-                        style={{ backgroundColor: badge.earned ? '#F7EAD9' : '#EDE8DF' }}
+                        className="items-center gap-1.5 rounded-xl border border-black/15 px-3.5 py-3 shadow-sm"
+                        style={{ backgroundColor: badge.earned ? '#fef3c7' : '#f3f4f6' }}
                       >
                         <Feather
                           name="award"
                           size={18}
-                          color={badge.earned ? '#C56A2B' : '#8F897D'}
+                          color={badge.earned ? '#b45309' : '#9ca3af'}
                         />
                         <Text
-                          className="max-w-[76px] text-center font-desk-sans-semibold text-[11px]"
-                          style={{ color: badge.earned ? '#7A4415' : '#8F897D' }}
+                          className="max-w-[76px] text-center text-[11px] font-semibold"
+                          style={{ color: badge.earned ? '#92400e' : '#9ca3af' }}
                         >
                           {badge.label}
                         </Text>

@@ -39,6 +39,9 @@ interface TeacherSidebarProps {
   /** Caption under the name in the footer profile row. Defaults to "Teacher" so
    * existing call sites are unaffected; the student sidebar passes "Student". */
   roleLabel?: string;
+  /** Small numeral shown next to a nav item's label, keyed by item `key`, when > 0 — e.g. how
+   * many to-dos are open. Optional so existing callers are unaffected. */
+  badges?: Partial<Record<string, number>>;
 }
 
 export function TeacherSidebar({
@@ -49,6 +52,7 @@ export function TeacherSidebar({
   avatarUrl,
   onProfilePress,
   roleLabel = 'Teacher',
+  badges,
 }: TeacherSidebarProps) {
   const initial = teacherName.trim().charAt(0).toUpperCase() || '?';
 
@@ -97,6 +101,11 @@ export function TeacherSidebar({
                 >
                   {item.label}
                 </Text>
+                {badges?.[item.key] ? (
+                  <Text className="ml-auto text-[11px] font-bold text-violet-300">
+                    {badges[item.key]}
+                  </Text>
+                ) : null}
               </Pressable>
             );
           })}
