@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { StudentShell } from '@/components/layout/student-shell';
 import { useLiveClassSessions } from '@/hooks/queries/use-live-class-session';
+import { useBlink } from '@/hooks/use-blink';
 import { useStudentDashboard } from '@/hooks/queries/use-student-dashboard';
 import { joinClassWithCode, signOut } from '@/lib/auth-actions';
 import { useAuthStore } from '@/store/auth-store';
@@ -29,6 +30,7 @@ export default function StudentHomeScreen() {
 
   const classIds = useMemo(() => dashboard.data?.classes.map((c) => c.id) ?? [], [dashboard.data]);
   const live = useLiveClassSessions(classIds);
+  const liveBlinkOn = useBlink(Boolean(live));
 
   const [joinCode, setJoinCode] = useState('');
   const [joinError, setJoinError] = useState<string | null>(null);
@@ -188,7 +190,17 @@ export default function StudentHomeScreen() {
                 no backing data; this one does) */}
             {live && (
               <Link href={`/class/${live.classId}` as Href} asChild>
-                <Pressable className="mt-2.5 flex-row flex-wrap items-center gap-3.5 rounded border-l-[3px] border-desk-indigo bg-desk-surface px-4 py-2.5" style={{ borderWidth: 1, borderColor: '#DDD6C8', borderLeftWidth: 3, borderLeftColor: '#302BB8' }}>
+                <Pressable
+                  className="mt-2.5 flex-row flex-wrap items-center gap-3.5 rounded border-l-[3px] border-desk-indigo bg-desk-surface px-4 py-2.5"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#DDD6C8',
+                    borderLeftWidth: 3,
+                    borderLeftColor: '#302BB8',
+                    opacity: liveBlinkOn ? 1 : 0.55,
+                  }}
+                >
+                  <View className="h-2 w-2 rounded-full bg-desk-indigo" />
                   <Text className="font-desk-sans-bold text-[11px] uppercase tracking-[0.14em] text-desk-indigo">
                     Live now
                   </Text>

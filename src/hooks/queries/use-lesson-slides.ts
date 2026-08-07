@@ -3,7 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRealtimeInvalidate } from '@/hooks/use-realtime-invalidate';
 import { renderPdfToSlides, SLIDES_SUPPORTED } from '@/lib/pdf-to-slides';
 import { supabase } from '@/lib/supabase';
-import type { LessonSlide, SlideActivityTag, SlidePacingMode } from '@/types/database';
+import type {
+  LessonSlide,
+  SlideActivityTag,
+  SlideGradingMode,
+  SlidePacingMode,
+} from '@/types/database';
 
 export interface ViewableSlide extends LessonSlide {
   url: string | null;
@@ -137,6 +142,7 @@ export function useLessonSlides(resourceId: string | null) {
       durationMinutes?: number | null;
       submissionsEnabled?: boolean;
       gradingEnabled?: boolean;
+      gradingMode?: SlideGradingMode;
       timerCommand?: SlideTimerCommand;
     }) => {
       const patch: {
@@ -144,12 +150,14 @@ export function useLessonSlides(resourceId: string | null) {
         duration_minutes?: number | null;
         submissions_enabled?: boolean;
         grading_enabled?: boolean;
+        grading_mode?: SlideGradingMode;
         timer_command?: SlideTimerCommand;
       } = {};
       if ('activityTag' in input) patch.activity_tag = input.activityTag;
       if ('durationMinutes' in input) patch.duration_minutes = input.durationMinutes;
       if ('submissionsEnabled' in input) patch.submissions_enabled = input.submissionsEnabled;
       if ('gradingEnabled' in input) patch.grading_enabled = input.gradingEnabled;
+      if ('gradingMode' in input) patch.grading_mode = input.gradingMode;
       if ('timerCommand' in input) patch.timer_command = input.timerCommand;
 
       const { error } = await supabase.from('lesson_slides').update(patch).eq('id', input.id);

@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import type { AtRiskStudent } from '@/hooks/queries/use-class-reports';
 
@@ -7,7 +7,13 @@ import type { AtRiskStudent } from '@/hooks/queries/use-class-reports';
 // admire — every student who's either scoring low, has done nothing yet, or has gone quiet,
 // with the specific reason, so a teacher can act on it in the next 30 seconds instead of
 // hunting for it across every other view.
-export function AtRiskList({ data }: { data: AtRiskStudent[] }) {
+export function AtRiskList({
+  data,
+  onSelectStudent,
+}: {
+  data: AtRiskStudent[];
+  onSelectStudent?: (studentId: string) => void;
+}) {
   if (data.length === 0) {
     return (
       <View className="flex-row items-center gap-2 rounded-xl bg-emerald-50 px-3.5 py-3">
@@ -22,8 +28,10 @@ export function AtRiskList({ data }: { data: AtRiskStudent[] }) {
   return (
     <View className="gap-2">
       {data.map((s) => (
-        <View
+        <Pressable
           key={s.studentId}
+          onPress={() => onSelectStudent?.(s.studentId)}
+          disabled={!onSelectStudent}
           className="flex-row items-center gap-3 rounded-xl bg-red-50 px-3.5 py-2.5"
         >
           <Feather name="alert-triangle" size={13} color="#C4451F" />
@@ -31,7 +39,8 @@ export function AtRiskList({ data }: { data: AtRiskStudent[] }) {
             <Text className="text-xs font-bold text-ink">{s.name}</Text>
             <Text className="text-[11px] text-red-700">{s.reasons.join(' · ')}</Text>
           </View>
-        </View>
+          {onSelectStudent && <Feather name="chevron-right" size={13} color="#C4451F" />}
+        </Pressable>
       ))}
     </View>
   );

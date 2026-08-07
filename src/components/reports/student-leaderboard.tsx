@@ -13,16 +13,25 @@ const RANK_MEDALS = ['#E8B04B', '#B0B0B0', '#B0703A'];
 export function StudentLeaderboard({
   data,
   onExport,
+  onSelectStudent,
 }: {
   data: LeaderboardEntry[];
   onExport?: (studentId: string, studentName: string) => void;
+  /** Tapping a row drills into that student's own individual analytics — see
+   * StudentReportDetail, rendered inline on the same Reports page. */
+  onSelectStudent?: (studentId: string) => void;
 }) {
   return (
     <View className="gap-3">
       {data.map((entry, i) => {
         const color = entry.avgScore !== null ? scoreBucketColor(entry.avgScore) : '#D1D5DB';
         return (
-          <View key={entry.studentId} className="flex-row items-center gap-3">
+          <Pressable
+            key={entry.studentId}
+            onPress={() => onSelectStudent?.(entry.studentId)}
+            disabled={!onSelectStudent}
+            className="flex-row items-center gap-3"
+          >
             <View
               className="h-5 w-5 items-center justify-center rounded-full"
               style={{ backgroundColor: i < 3 ? `${RANK_MEDALS[i]}22` : '#00000008' }}
@@ -49,6 +58,7 @@ export function StudentLeaderboard({
             <Text className="w-12 text-right text-[10px] text-ink/40">
               {entry.completed}/{entry.total}
             </Text>
+            {onSelectStudent && <Feather name="chevron-right" size={13} color="#c4c4c4" />}
             {onExport && (
               <Pressable
                 onPress={() => onExport(entry.studentId, entry.name)}
@@ -58,7 +68,7 @@ export function StudentLeaderboard({
                 <Feather name="download" size={12} color="#9ca3af" />
               </Pressable>
             )}
-          </View>
+          </Pressable>
         );
       })}
     </View>

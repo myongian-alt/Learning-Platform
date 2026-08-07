@@ -1,7 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { autoGradeSlide } from '@/lib/slide-grading';
 import { supabase } from '@/lib/supabase';
 import type { SlideActivityTag } from '@/types/database';
+
+import type { SlideAnswers, SlideObject } from './use-lesson-slides';
 
 export interface WeekActivity {
   slideId: string;
@@ -25,7 +28,9 @@ export function useWeekActivities(resourceIds: string[], studentId: string | nul
     queryFn: async (): Promise<WeekActivity[]> => {
       const { data: allSlides, error } = await supabase
         .from('lesson_slides')
-        .select('id, resource_id, position, activity_tag, submissions_enabled, grading_enabled')
+        .select(
+          'id, resource_id, position, activity_tag, submissions_enabled, grading_enabled, grading_mode, objects',
+        )
         .in('resource_id', resourceIds);
       if (error) throw error;
 
@@ -44,7 +49,7 @@ export function useWeekActivities(resourceIds: string[], studentId: string | nul
         slideIds.length > 0
           ? await supabase
               .from('slide_submissions')
-              .select('slide_id, submitted_at, grade')
+              .select('slide_id, submitted_at, grade, answers')
               .eq('student_id', studentId!)
               .in('slide_id', slideIds)
           : { data: [], error: null };
@@ -54,6 +59,17 @@ export function useWeekActivities(resourceIds: string[], studentId: string | nul
       return gradable.map((slide) => {
         const submission = submissionBySlide.get(slide.id);
         const resourceSlides = byResource.get(slide.resource_id) ?? [];
+        // Mode is authoritative, not just "is there a manual grade" — same gating as
+        // Gradebook/StudentGradePanel, so this card's badge can never show a stale manual
+        // grade left over from before a teacher switched the slide to Auto (or vice versa).
+        const gradeValue = !slide.grading_enabled
+          ? null
+          : slide.grading_mode === 'manual'
+            ? (submission?.grade ?? null)
+            : (autoGradeSlide(
+                (slide.objects ?? []) as unknown as SlideObject[],
+                (submission?.answers ?? {}) as unknown as SlideAnswers,
+              )?.percent ?? null);
         return {
           slideId: slide.id,
           resourceId: slide.resource_id,
@@ -63,7 +79,7 @@ export function useWeekActivities(resourceIds: string[], studentId: string | nul
           ),
           activityTag: slide.activity_tag,
           submitted: Boolean(submission?.submitted_at),
-          grade: slide.grading_enabled ? (submission?.grade ?? null) : null,
+          grade: gradeValue,
         };
       });
     },

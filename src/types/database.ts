@@ -761,6 +761,7 @@ export type Database = {
           created_at: string;
           duration_minutes: number | null;
           grading_enabled: boolean;
+          grading_mode: Database['public']['Enums']['slide_grading_mode'];
           id: string;
           objects: Json;
           pacing_mode: Database['public']['Enums']['slide_pacing_mode'];
@@ -776,6 +777,7 @@ export type Database = {
           created_at?: string;
           duration_minutes?: number | null;
           grading_enabled?: boolean;
+          grading_mode?: Database['public']['Enums']['slide_grading_mode'];
           id?: string;
           objects?: Json;
           pacing_mode?: Database['public']['Enums']['slide_pacing_mode'];
@@ -791,6 +793,7 @@ export type Database = {
           created_at?: string;
           duration_minutes?: number | null;
           grading_enabled?: boolean;
+          grading_mode?: Database['public']['Enums']['slide_grading_mode'];
           id?: string;
           objects?: Json;
           pacing_mode?: Database['public']['Enums']['slide_pacing_mode'];
@@ -1393,6 +1396,7 @@ export type Database = {
         | 'group_activity'
         | 'challenge_extra'
         | 'exit_ticket';
+      slide_grading_mode: 'auto' | 'manual';
       slide_pacing_mode: 'teacher_paced' | 'student_paced';
       stroke_author_role: 'student' | 'teacher';
       submission_status: 'not_started' | 'in_progress' | 'submitted' | 'graded';
@@ -1563,6 +1567,7 @@ export const Constants = {
         'challenge_extra',
         'exit_ticket',
       ],
+      slide_grading_mode: ['auto', 'manual'],
       slide_pacing_mode: ['teacher_paced', 'student_paced'],
       stroke_author_role: ['student', 'teacher'],
       submission_status: ['not_started', 'in_progress', 'submitted', 'graded'],
@@ -1590,6 +1595,7 @@ export type LessonTaskKind = Enums<'lesson_task_kind'>;
 export type LessonConversionStatus = Enums<'lesson_conversion_status'>;
 export type SlideActivityTag = Enums<'slide_activity_tag'>;
 export type SlidePacingMode = Enums<'slide_pacing_mode'>;
+export type SlideGradingMode = Enums<'slide_grading_mode'>;
 export type AiResourceStatus = Enums<'ai_resource_status'>;
 
 export type StrokePoint = {

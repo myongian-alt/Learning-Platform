@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
 import { useClassReports } from '@/hooks/queries/use-class-reports';
@@ -10,6 +11,7 @@ import { EngagementHeatmap } from './engagement-heatmap';
 import { GradeDonutChart } from './grade-donut-chart';
 import { StatCard } from './stat-card';
 import { StudentLeaderboard } from './student-leaderboard';
+import { StudentReportDetail } from './student-report-detail';
 import { TrendLineChart } from './trend-line-chart';
 
 function SectionCard({
@@ -38,6 +40,7 @@ export function ClassReportsDashboard({ classId }: { classId: string }) {
   // that back the Gradebook grid, so an individual student's exported report uses the exact
   // same item names a teacher already sees there — one labeling scheme, not two.
   const gradebook = useGradebook(classId);
+  const [selectedStudent, setSelectedStudent] = useState<{ id: string; name: string } | null>(null);
 
   const handleExportStudent = (studentId: string, studentName: string) => {
     const columns = gradebook.data?.columns ?? [];
@@ -50,6 +53,17 @@ export function ClassReportsDashboard({ classId }: { classId: string }) {
     ]);
     downloadCsv(`${studentName.replace(/\s+/g, '-').toLowerCase()}-report.csv`, [header, ...body]);
   };
+
+  if (selectedStudent) {
+    return (
+      <StudentReportDetail
+        classId={classId}
+        studentId={selectedStudent.id}
+        studentName={selectedStudent.name}
+        onBack={() => setSelectedStudent(null)}
+      />
+    );
+  }
 
   if (reports.isLoading) {
     return (
@@ -142,7 +156,14 @@ export function ClassReportsDashboard({ classId }: { classId: string }) {
               )}
             </SectionCard>
             <SectionCard title="Leaderboard" subtitle="Ranked by average score">
-              <StudentLeaderboard data={data.leaderboard} onExport={handleExportStudent} />
+              <StudentLeaderboard
+                data={data.leaderboard}
+                onExport={handleExportStudent}
+                onSelectStudent={(studentId) => {
+                  const entry = data.leaderboard.find((l) => l.studentId === studentId);
+                  if (entry) setSelectedStudent({ id: entry.studentId, name: entry.name });
+                }}
+              />
             </SectionCard>
           </View>
 
@@ -152,7 +173,13 @@ export function ClassReportsDashboard({ classId }: { classId: string }) {
               <EngagementHeatmap data={data.heatmap} />
             </SectionCard>
             <SectionCard title="Needs attention" subtitle="Flagged automatically from the data above">
-              <AtRiskList data={data.atRisk} />
+              <AtRiskList
+                data={data.atRisk}
+                onSelectStudent={(studentId) => {
+                  const entry = data.atRisk.find((s) => s.studentId === studentId);
+                  if (entry) setSelectedStudent({ id: entry.studentId, name: entry.name });
+                }}
+              />
             </SectionCard>
           </View>
         </>

@@ -61,7 +61,7 @@ export function useStudentGrades() {
           resourceIds.length > 0
             ? await supabase
                 .from('lesson_slides')
-                .select('id, resource_id, objects, grading_enabled')
+                .select('id, resource_id, objects, grading_enabled, grading_mode')
                 .in('resource_id', resourceIds)
             : { data: [], error: null };
         if (slidesError) throw slidesError;
@@ -84,23 +84,33 @@ export function useStudentGrades() {
           const resource = slide ? resourceById.get(slide.resource_id) : null;
           if (!slide || !resource || !slide.grading_enabled) continue;
 
-          const auto = autoGradeSlide(
-            (slide.objects ?? []) as unknown as SlideObject[],
-            (submission.answers ?? {}) as unknown as SlideAnswers,
-          );
+          // Mode is authoritative (see the grading_mode migration) — a Manual slide only ever
+          // reflects the teacher's own grade even if it happens to have gradable objects, and
+          // an Auto slide always shows the live-recomputed percent, never a stale manual one.
+          const isAutoMode = slide.grading_mode === 'auto';
+          const auto = isAutoMode
+            ? autoGradeSlide(
+                (slide.objects ?? []) as unknown as SlideObject[],
+                (submission.answers ?? {}) as unknown as SlideAnswers,
+              )
+            : null;
           const hasManualGrade = submission.grade !== null && submission.grade !== undefined;
-          const percent = hasManualGrade ? submission.grade : (auto?.percent ?? null);
-          const tag: GradeTag = hasManualGrade
-            ? 'Marked'
-            : auto
+          const percent = isAutoMode ? (auto?.percent ?? null) : hasManualGrade ? submission.grade : null;
+          const tag: GradeTag = isAutoMode
+            ? auto
               ? auto.percent === 100
                 ? 'Full marks'
                 : 'Auto'
+              : 'Pending'
+            : hasManualGrade
+              ? 'Marked'
               : 'Pending';
-          const scoreLabel = hasManualGrade
-            ? `${submission.grade}/100`
-            : auto
+          const scoreLabel = isAutoMode
+            ? auto
               ? `${auto.correct}/${auto.total}`
+              : '—'
+            : hasManualGrade
+              ? `${submission.grade}/100`
               : '—';
 
           items.push({

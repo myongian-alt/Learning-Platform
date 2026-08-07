@@ -82,6 +82,19 @@ export interface ClassReportsData {
   atRisk: AtRiskStudent[];
 }
 
+// Every graded event flattened into one common shape: who, what score, when, and (for slides
+// only) which activity tag it belongs to — quizzes get their own pseudo-tag. `itemLabel` is
+// only needed for a single student's own item-by-item history (see useStudentReport below);
+// the class-wide aggregates in useClassReports never read it.
+export interface GradedEvent {
+  studentId: string;
+  percent: number;
+  submittedAt: string;
+  tagKey: string;
+  tagLabel: string;
+  itemLabel: string;
+}
+
 function dayKey(iso: string) {
   return iso.slice(0, 10);
 }
@@ -92,6 +105,174 @@ function scoreBucketColor(avg: number) {
   if (avg >= 70) return '#E8B04B';
   if (avg >= 60) return '#C56A2B';
   return '#C4451F';
+}
+
+// Fetches and flattens every graded event for a class — every slide/quiz submission,
+// resolved to a 0-100 percent the exact same way Gradebook does (manual grade if set, else the
+// live auto-graded percent). Optionally scoped to one student (useStudentReport) instead of
+// the whole roster (useClassReports) — same shape either way, so both hooks can share the
+// trend/radar/heatmap math below without duplicating it.
+async function fetchGradableEvents(
+  classId: string,
+  studentId?: string,
+): Promise<{ events: GradedEvent[]; totalGradableItems: number }> {
+  const resourcesRes = await supabase
+    .from('lesson_resources')
+    .select('id, week_number, lesson_number, title')
+    .eq('class_id', classId);
+  if (resourcesRes.error) throw resourcesRes.error;
+
+  const resources = resourcesRes.data ?? [];
+  const resourceById = new Map(resources.map((r) => [r.id, r]));
+  const resourceIds = resources.map((r) => r.id);
+
+  const [slidesRes, tasksRes] = await Promise.all([
+    resourceIds.length > 0
+      ? supabase
+          .from('lesson_slides')
+          .select('id, resource_id, activity_tag, objects')
+          .in('resource_id', resourceIds)
+          .eq('grading_enabled', true)
+      : Promise.resolve({ data: [], error: null }),
+    resourceIds.length > 0
+      ? supabase
+          .from('lesson_attached_tasks')
+          .select('id, resource_id')
+          .in('resource_id', resourceIds)
+          .eq('kind', 'custom_mcqs')
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (slidesRes.error) throw slidesRes.error;
+  if (tasksRes.error) throw tasksRes.error;
+
+  const slides = slidesRes.data ?? [];
+  const tasks = tasksRes.data ?? [];
+  const slideIds = slides.map((s) => s.id);
+  const taskIds = tasks.map((t) => t.id);
+  const slideById = new Map(slides.map((s) => [s.id, s]));
+  const taskById = new Map(tasks.map((t) => [t.id, t]));
+
+  const [slideSubsRes, mcqSubsRes] = await Promise.all([
+    slideIds.length > 0
+      ? (studentId
+          ? supabase
+              .from('slide_submissions')
+              .select('slide_id, student_id, grade, answers, submitted_at')
+              .eq('student_id', studentId)
+              .in('slide_id', slideIds)
+              .not('submitted_at', 'is', null)
+          : supabase
+              .from('slide_submissions')
+              .select('slide_id, student_id, grade, answers, submitted_at')
+              .in('slide_id', slideIds)
+              .not('submitted_at', 'is', null))
+      : Promise.resolve({ data: [], error: null }),
+    taskIds.length > 0
+      ? (studentId
+          ? supabase
+              .from('mcq_task_submissions')
+              .select('task_id, student_id, score, submitted_at')
+              .eq('student_id', studentId)
+              .in('task_id', taskIds)
+          : supabase
+              .from('mcq_task_submissions')
+              .select('task_id, student_id, score, submitted_at')
+              .in('task_id', taskIds))
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (slideSubsRes.error) throw slideSubsRes.error;
+  if (mcqSubsRes.error) throw mcqSubsRes.error;
+
+  const events: GradedEvent[] = [];
+  for (const sub of slideSubsRes.data ?? []) {
+    const slide = slideById.get(sub.slide_id);
+    if (!slide || !sub.submitted_at) continue;
+    const hasManualGrade = sub.grade !== null && sub.grade !== undefined;
+    const percent = hasManualGrade
+      ? sub.grade!
+      : (autoGradeSlide(
+          (slide.objects ?? []) as unknown as SlideObject[],
+          (sub.answers ?? {}) as unknown as SlideAnswers,
+        )?.percent ?? null);
+    if (percent === null) continue;
+    const resource = resourceById.get(slide.resource_id);
+    const tagLabel = slide.activity_tag ? ACTIVITY_TAG_LABELS[slide.activity_tag] : 'Untagged';
+    events.push({
+      studentId: sub.student_id,
+      percent,
+      submittedAt: sub.submitted_at,
+      tagKey: slide.activity_tag ?? 'untagged',
+      tagLabel,
+      itemLabel: resource ? `${resource.title} · ${tagLabel}` : tagLabel,
+    });
+  }
+  for (const sub of mcqSubsRes.data ?? []) {
+    if (!sub.submitted_at) continue;
+    const task = taskById.get(sub.task_id);
+    const resource = task ? resourceById.get(task.resource_id) : null;
+    events.push({
+      studentId: sub.student_id,
+      percent: sub.score,
+      submittedAt: sub.submitted_at,
+      tagKey: 'quiz',
+      tagLabel: 'Quizzes',
+      itemLabel: resource ? `${resource.title} · Quiz` : 'Quiz',
+    });
+  }
+
+  return { events, totalGradableItems: slideIds.length + taskIds.length };
+}
+
+// Shared by both hooks: rolling 8-week trend, per-activity-type radar, and a day-by-day
+// engagement heatmap — identical math whether `events` is the whole class or one student.
+function buildTrendRadarHeatmap(events: GradedEvent[]) {
+  const now = Date.now();
+
+  const trendBuckets = Array.from({ length: TREND_WEEKS }, (_, i) => ({
+    label: i === TREND_WEEKS - 1 ? 'This wk' : `${TREND_WEEKS - 1 - i}wk ago`,
+    sum: 0,
+    count: 0,
+  }));
+  for (const e of events) {
+    const daysAgo = Math.floor((now - new Date(e.submittedAt).getTime()) / 86_400_000);
+    const weekIndex = Math.floor(daysAgo / 7);
+    if (weekIndex >= 0 && weekIndex < TREND_WEEKS) {
+      const bucket = trendBuckets[TREND_WEEKS - 1 - weekIndex];
+      bucket.sum += e.percent;
+      bucket.count += 1;
+    }
+  }
+  const trend: TrendPoint[] = trendBuckets.map((b) => ({
+    label: b.label,
+    count: b.count,
+    avgScore: b.count > 0 ? Math.round(b.sum / b.count) : null,
+  }));
+
+  const byTag = new Map<string, { label: string; sum: number; count: number }>();
+  for (const e of events) {
+    const entry = byTag.get(e.tagKey) ?? { label: e.tagLabel, sum: 0, count: 0 };
+    entry.sum += e.percent;
+    entry.count += 1;
+    byTag.set(e.tagKey, entry);
+  }
+  const radar: RadarAxis[] = Array.from(byTag.entries()).map(([key, v]) => ({
+    key,
+    label: v.label,
+    avgScore: v.count > 0 ? Math.round(v.sum / v.count) : null,
+  }));
+
+  const countByDay = new Map<string, number>();
+  for (const e of events) {
+    const key = dayKey(e.submittedAt);
+    countByDay.set(key, (countByDay.get(key) ?? 0) + 1);
+  }
+  const heatmap: HeatmapDay[] = Array.from({ length: HEATMAP_DAYS }, (_, i) => {
+    const d = new Date(now - (HEATMAP_DAYS - 1 - i) * 86_400_000);
+    const key = d.toISOString().slice(0, 10);
+    return { date: key, count: countByDay.get(key) ?? 0 };
+  });
+
+  return { trend, radar, heatmap };
 }
 
 // Everything a teacher needs to see how their WHOLE class is doing, at a glance and in
@@ -105,113 +286,17 @@ export function useClassReports(classId: string | null) {
     queryKey: ['class-reports', classId],
     enabled: Boolean(classId),
     queryFn: async (): Promise<ClassReportsData> => {
-      const [rosterRes, resourcesRes] = await Promise.all([
-        supabase
-          .from('class_members')
-          .select('student_id, profiles(full_name)')
-          .eq('class_id', classId!),
-        supabase
-          .from('lesson_resources')
-          .select('id, week_number, lesson_number, title')
-          .eq('class_id', classId!),
+      const [rosterRes, { events, totalGradableItems }] = await Promise.all([
+        supabase.from('class_members').select('student_id, profiles(full_name)').eq('class_id', classId!),
+        fetchGradableEvents(classId!),
       ]);
       if (rosterRes.error) throw rosterRes.error;
-      if (resourcesRes.error) throw resourcesRes.error;
 
-      const resources = resourcesRes.data ?? [];
-      const resourceIds = resources.map((r) => r.id);
       const students = (rosterRes.data ?? []).map((r) => ({
         studentId: r.student_id,
         name: (r.profiles as { full_name: string } | null)?.full_name ?? 'Student',
       }));
 
-      const [slidesRes, tasksRes] = await Promise.all([
-        resourceIds.length > 0
-          ? supabase
-              .from('lesson_slides')
-              .select('id, resource_id, activity_tag, objects')
-              .in('resource_id', resourceIds)
-              .eq('grading_enabled', true)
-          : Promise.resolve({ data: [], error: null }),
-        resourceIds.length > 0
-          ? supabase
-              .from('lesson_attached_tasks')
-              .select('id, resource_id')
-              .in('resource_id', resourceIds)
-              .eq('kind', 'custom_mcqs')
-          : Promise.resolve({ data: [], error: null }),
-      ]);
-      if (slidesRes.error) throw slidesRes.error;
-      if (tasksRes.error) throw tasksRes.error;
-
-      const slides = slidesRes.data ?? [];
-      const tasks = tasksRes.data ?? [];
-      const slideIds = slides.map((s) => s.id);
-      const taskIds = tasks.map((t) => t.id);
-      const slideById = new Map(slides.map((s) => [s.id, s]));
-
-      const [slideSubsRes, mcqSubsRes] = await Promise.all([
-        slideIds.length > 0
-          ? supabase
-              .from('slide_submissions')
-              .select('slide_id, student_id, grade, answers, submitted_at')
-              .in('slide_id', slideIds)
-              .not('submitted_at', 'is', null)
-          : Promise.resolve({ data: [], error: null }),
-        taskIds.length > 0
-          ? supabase
-              .from('mcq_task_submissions')
-              .select('task_id, student_id, score, submitted_at')
-              .in('task_id', taskIds)
-          : Promise.resolve({ data: [], error: null }),
-      ]);
-      if (slideSubsRes.error) throw slideSubsRes.error;
-      if (mcqSubsRes.error) throw mcqSubsRes.error;
-
-      // Flatten every graded event into one common shape: who, what score, when, and (for
-      // slides only) which activity tag it belongs to — quizzes get their own pseudo-tag.
-      interface GradedEvent {
-        studentId: string;
-        percent: number;
-        submittedAt: string;
-        tagKey: string;
-        tagLabel: string;
-      }
-      const events: GradedEvent[] = [];
-
-      for (const sub of slideSubsRes.data ?? []) {
-        const slide = slideById.get(sub.slide_id);
-        if (!slide || !sub.submitted_at) continue;
-        const hasManualGrade = sub.grade !== null && sub.grade !== undefined;
-        const percent = hasManualGrade
-          ? sub.grade!
-          : (autoGradeSlide(
-              (slide.objects ?? []) as unknown as SlideObject[],
-              (sub.answers ?? {}) as unknown as SlideAnswers,
-            )?.percent ?? null);
-        if (percent === null) continue;
-        events.push({
-          studentId: sub.student_id,
-          percent,
-          submittedAt: sub.submitted_at,
-          tagKey: slide.activity_tag ?? 'untagged',
-          tagLabel: slide.activity_tag ? ACTIVITY_TAG_LABELS[slide.activity_tag] : 'Untagged',
-        });
-      }
-      for (const sub of mcqSubsRes.data ?? []) {
-        if (!sub.submitted_at) continue;
-        events.push({
-          studentId: sub.student_id,
-          percent: sub.score,
-          submittedAt: sub.submitted_at,
-          tagKey: 'quiz',
-          tagLabel: 'Quizzes',
-        });
-      }
-
-      const totalGradableItems = slideIds.length + taskIds.length;
-
-      // --- Per-student aggregates (leaderboard + at-risk + distribution) ---
       const eventsByStudent = new Map<string, GradedEvent[]>();
       for (const e of events) {
         const list = eventsByStudent.get(e.studentId) ?? [];
@@ -236,7 +321,6 @@ export function useClassReports(classId: string | null) {
         })
         .sort((a, b) => (b.avgScore ?? -1) - (a.avgScore ?? -1));
 
-      // --- Distribution (bucket each student's average) ---
       const bucketDefs = [
         { label: '90-100', min: 90, color: '#2E6B57' },
         { label: '80-89', min: 80, color: '#302BB8' },
@@ -255,61 +339,15 @@ export function useClassReports(classId: string | null) {
         ).length,
       }));
 
-      // --- Radar (average score per activity tag, including the "Quizzes" pseudo-tag) ---
-      const byTag = new Map<string, { label: string; sum: number; count: number }>();
-      for (const e of events) {
-        const entry = byTag.get(e.tagKey) ?? { label: e.tagLabel, sum: 0, count: 0 };
-        entry.sum += e.percent;
-        entry.count += 1;
-        byTag.set(e.tagKey, entry);
-      }
-      const radar: RadarAxis[] = Array.from(byTag.entries()).map(([key, v]) => ({
-        key,
-        label: v.label,
-        avgScore: v.count > 0 ? Math.round(v.sum / v.count) : null,
-      }));
+      const { trend, radar, heatmap } = buildTrendRadarHeatmap(events);
 
-      // --- Weekly trend (rolling 8-week average score, most recent last) ---
-      const now = Date.now();
-      const trendBuckets = Array.from({ length: TREND_WEEKS }, (_, i) => ({
-        label: i === TREND_WEEKS - 1 ? 'This wk' : `${TREND_WEEKS - 1 - i}wk ago`,
-        sum: 0,
-        count: 0,
-      }));
-      for (const e of events) {
-        const daysAgo = Math.floor((now - new Date(e.submittedAt).getTime()) / 86_400_000);
-        const weekIndex = Math.floor(daysAgo / 7);
-        if (weekIndex >= 0 && weekIndex < TREND_WEEKS) {
-          const bucket = trendBuckets[TREND_WEEKS - 1 - weekIndex];
-          bucket.sum += e.percent;
-          bucket.count += 1;
-        }
-      }
-      const trend: TrendPoint[] = trendBuckets.map((b) => ({
-        label: b.label,
-        count: b.count,
-        avgScore: b.count > 0 ? Math.round(b.sum / b.count) : null,
-      }));
-
-      // --- Engagement heatmap (submissions per day, last HEATMAP_DAYS days) ---
-      const countByDay = new Map<string, number>();
-      for (const e of events) {
-        const key = dayKey(e.submittedAt);
-        countByDay.set(key, (countByDay.get(key) ?? 0) + 1);
-      }
-      const heatmap: HeatmapDay[] = Array.from({ length: HEATMAP_DAYS }, (_, i) => {
-        const d = new Date(now - (HEATMAP_DAYS - 1 - i) * 86_400_000);
-        const key = d.toISOString().slice(0, 10);
-        return { date: key, count: countByDay.get(key) ?? 0 };
-      });
-
-      // --- At-risk students ---
       const lastActiveByStudent = new Map<string, number>();
       for (const e of events) {
         const t = new Date(e.submittedAt).getTime();
         const prev = lastActiveByStudent.get(e.studentId) ?? 0;
         if (t > prev) lastActiveByStudent.set(e.studentId, t);
       }
+      const now = Date.now();
       const atRisk: AtRiskStudent[] = leaderboard
         .map((l) => {
           const lastActive = lastActiveByStudent.get(l.studentId);
@@ -328,13 +366,10 @@ export function useClassReports(classId: string | null) {
         .filter((s) => s.reasons.length > 0)
         .sort((a, b) => (a.avgScore ?? -1) - (b.avgScore ?? -1));
 
-      // --- KPIs ---
       const classAverage =
         leaderboard.filter((l) => l.avgScore !== null).length > 0
           ? Math.round(
-              leaderboard
-                .filter((l) => l.avgScore !== null)
-                .reduce((sum, l) => sum + l.avgScore!, 0) /
+              leaderboard.filter((l) => l.avgScore !== null).reduce((sum, l) => sum + l.avgScore!, 0) /
                 leaderboard.filter((l) => l.avgScore !== null).length,
             )
           : null;
@@ -351,6 +386,44 @@ export function useClassReports(classId: string | null) {
       };
 
       return { kpis, trend, distribution, radar, leaderboard, heatmap, atRisk };
+    },
+  });
+}
+
+export interface StudentGradedItem {
+  label: string;
+  percent: number;
+  submittedAt: string;
+}
+
+export interface StudentReportData {
+  avgScore: number | null;
+  completed: number;
+  trend: TrendPoint[];
+  radar: RadarAxis[];
+  heatmap: HeatmapDay[];
+  history: StudentGradedItem[];
+}
+
+// One student's own version of useClassReports — same trend/radar/heatmap math
+// (buildTrendRadarHeatmap), scoped to just their events, plus their full graded-item history
+// (which the class-wide view has no reason to carry). Used for the teacher's "drill into one
+// student" view in Reports; reuses fetchGradableEvents with a studentId filter rather than
+// fetching the whole class and throwing most of it away.
+export function useStudentReport(classId: string | null, studentId: string | null) {
+  return useQuery({
+    queryKey: ['student-report', classId, studentId],
+    enabled: Boolean(classId) && Boolean(studentId),
+    queryFn: async (): Promise<StudentReportData> => {
+      const { events } = await fetchGradableEvents(classId!, studentId!);
+      const { trend, radar, heatmap } = buildTrendRadarHeatmap(events);
+      const avgScore =
+        events.length > 0 ? Math.round(events.reduce((sum, e) => sum + e.percent, 0) / events.length) : null;
+      const history: StudentGradedItem[] = events
+        .map((e) => ({ label: e.itemLabel, percent: e.percent, submittedAt: e.submittedAt }))
+        .sort((a, b) => (a.submittedAt < b.submittedAt ? 1 : -1));
+
+      return { avgScore, completed: events.length, trend, radar, heatmap, history };
     },
   });
 }

@@ -22,6 +22,7 @@ import { FillBlanksView } from '@/components/lessons/fill-blanks-view';
 import { QuizView } from '@/components/lessons/quiz-view';
 import { GradeSlider } from '@/components/slides/grade-slider';
 import { useAddSlides } from '@/hooks/queries/use-add-slides';
+import { useBlink } from '@/hooks/use-blink';
 import {
   useLessonSlides,
   type SlideAnswers,
@@ -43,7 +44,7 @@ import {
   type SlideSubmissionWithStudent,
 } from '@/hooks/queries/use-slide-submissions';
 import { autoGradeSlide, type AutoGradeResult } from '@/lib/slide-grading';
-import type { LessonResource, SlideActivityTag } from '@/types/database';
+import type { LessonResource, SlideActivityTag, SlideGradingMode } from '@/types/database';
 
 export const SLIDE_TAGS: Record<SlideActivityTag, { label: string; color: string }> = {
   title_objectives: { label: 'Title / Objectives', color: '#3b82f6' },
@@ -80,6 +81,25 @@ const SHAPE_OPTIONS: { shape: SlideObjectShape; icon: keyof typeof Feather.glyph
   { shape: 'line', icon: 'minus' },
   { shape: 'arrow', icon: 'arrow-up-right' },
 ];
+
+// One accent per tool family so the toolbar reads as a set of distinct, purposeful tools at a
+// glance instead of a flat gray grid — matches the color language already used elsewhere for
+// the same concepts (fill_blank=violet, multiple_choice=blue in slide-objects-layer.tsx).
+const TOOL_TINTS = {
+  draw: '#7c3aed',
+  highlight: '#f59e0b',
+  erase: '#ef4444',
+  comment: '#0ea5e9',
+  text: '#4f46e5',
+  shapes: '#7c3aed',
+  link: '#2563eb',
+  image: '#0d9488',
+  fillBlank: '#7c3aed',
+  multipleChoice: '#2563eb',
+  emoji: '#db2777',
+  file: '#64748b',
+  voice: '#e11d48',
+};
 
 export type SlideViewerRole = 'teacher' | 'student';
 
@@ -236,6 +256,7 @@ function SlideStage({
   // `live` is already pre-filtered to "only set when it matches this resource" by the
   // parent (see SlideViewerModal), so its mere presence means "live, here."
   const isLiveHere = Boolean(live);
+  const liveBlinkOn = useBlink(isLiveHere);
 
   // Own annotation layer for a student (separate from the teacher's authoring layer above),
   // and the completion roster for a teacher — each a no-op query when not relevant to this
@@ -406,8 +427,11 @@ function SlideStage({
   // subscription — a teacher setting a manual grade updates this without the student
   // reloading. Auto-graded percent recomputes from the slide's current objects + the
   // student's stored answers (same as Gradebook/Grades tab), so it's never stale relative
-  // to either.
-  const myAutoResult = !isTeacher ? autoGradeSlide(teacherObjects, myAnswers) : null;
+  // to either. Only computed when the slide is explicitly in Auto mode — a Manual-mode slide
+  // never auto-grades even if it happens to have gradable objects on it (a teacher can
+  // deliberately choose to hand-grade a slide with fill_blank/multiple_choice questions).
+  const myAutoResult =
+    !isTeacher && slide?.grading_mode === 'auto' ? autoGradeSlide(teacherObjects, myAnswers) : null;
 
   const toolbarProps = {
     tool,
@@ -532,25 +556,16 @@ function SlideStage({
 
   // Independent from submissionsEnabled: a slide can accept student work without the
   // teacher ever intending to score it (e.g. a warm-up). Off by default per-slide — the
-  // teacher opts in only for slides that should actually be graded.
+  // teacher opts in only for slides that should actually be graded, and explicitly picks
+  // Auto (scored live from fill_blank/multiple_choice answers) or Manual (teacher grades by
+  // hand via GradingPanel, even if the slide happens to have gradable objects on it) rather
+  // than that being silently inferred from content the way it used to be.
   const teacherGradingToggle = isTeacher && slide && (
-    <Pressable
-      onPress={() => updateSlide.mutate({ id: slide.id, gradingEnabled: !slide.grading_enabled })}
-      className={`flex-row items-center gap-1.5 rounded-full px-2.5 py-1.5 ${
-        slide.grading_enabled ? 'bg-violet-50' : 'bg-black/[0.03]'
-      }`}
-    >
-      <Feather
-        name={slide.grading_enabled ? 'toggle-right' : 'toggle-left'}
-        size={16}
-        color={slide.grading_enabled ? '#7c3aed' : '#9ca3af'}
-      />
-      <Text
-        className={`text-xs font-medium ${slide.grading_enabled ? 'text-violet-700' : 'text-ink/50'}`}
-      >
-        {slide.grading_enabled ? 'Grading on' : 'Grading off'}
-      </Text>
-    </Pressable>
+    <GradingModeControl
+      gradingEnabled={slide.grading_enabled}
+      gradingMode={slide.grading_mode}
+      onChange={(next) => updateSlide.mutate({ id: slide.id, ...next })}
+    />
   );
 
   // Read-only badge for students — the teacher gets a tappable toggle instead, so pacing can
@@ -674,7 +689,10 @@ function SlideStage({
   );
 
   const liveTag = isLiveHere && (
-    <View className="flex-row items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1">
+    <View
+      style={{ opacity: liveBlinkOn ? 1 : 0.4 }}
+      className="flex-row items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1"
+    >
       <View className="h-1.5 w-1.5 rounded-full bg-red-500" />
       <Text className="text-[10px] font-bold text-red-600">LIVE · your teacher is presenting</Text>
     </View>
@@ -741,6 +759,7 @@ function SlideStage({
                 grade={mySubmission.data?.grade ?? null}
                 autoResult={myAutoResult}
                 feedback={mySubmission.data?.feedback ?? null}
+                gradingMode={slide.grading_mode}
               />
             )}
           </View>
@@ -942,6 +961,7 @@ function SlideStage({
                   grade={mySubmission.data?.grade ?? null}
                   autoResult={myAutoResult}
                   feedback={mySubmission.data?.feedback ?? null}
+                  gradingMode={slide.grading_mode}
                 />
               )}
               {liveTag}
@@ -1231,6 +1251,87 @@ function AddSlideMenu({
   );
 }
 
+// Teacher-only: turning grading on requires picking Auto or Manual up front (rather than
+// silently inferring it from whether the slide happens to have gradable objects) — tapping the
+// pill opens a 3-row menu (Off / Auto grading / Manual grading); the current state is always
+// one of those three, never an ambiguous "on, but which kind."
+function GradingModeControl({
+  gradingEnabled,
+  gradingMode,
+  onChange,
+}: {
+  gradingEnabled: boolean;
+  gradingMode: SlideGradingMode;
+  onChange: (next: { gradingEnabled: boolean; gradingMode?: SlideGradingMode }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const label = !gradingEnabled ? 'Grading off' : gradingMode === 'auto' ? 'Auto grading' : 'Manual grading';
+  const color = !gradingEnabled ? '#9ca3af' : '#7c3aed';
+  const bg = !gradingEnabled ? 'bg-black/[0.03]' : 'bg-violet-50';
+
+  const options: { label: string; icon: keyof typeof Feather.glyphMap; onPress: () => void }[] = [
+    {
+      label: 'Off',
+      icon: 'toggle-left',
+      onPress: () => onChange({ gradingEnabled: false }),
+    },
+    {
+      label: 'Auto grading',
+      icon: 'zap',
+      onPress: () => onChange({ gradingEnabled: true, gradingMode: 'auto' }),
+    },
+    {
+      label: 'Manual grading',
+      icon: 'edit-3',
+      onPress: () => onChange({ gradingEnabled: true, gradingMode: 'manual' }),
+    },
+  ];
+
+  return (
+    <View>
+      <Pressable
+        onPress={() => setOpen((v) => !v)}
+        className={`flex-row items-center gap-1.5 rounded-full px-2.5 py-1.5 ${bg}`}
+      >
+        <Feather name={gradingEnabled ? 'toggle-right' : 'toggle-left'} size={16} color={color} />
+        <Text className="text-xs font-medium" style={{ color: gradingEnabled ? '#7c3aed' : '#6b7280' }}>
+          {label}
+        </Text>
+        <Feather name={open ? 'chevron-up' : 'chevron-down'} size={12} color={color} />
+      </Pressable>
+      {open && (
+        <View className="absolute left-0 top-11 z-10 w-44 gap-0.5 rounded-xl bg-white p-1.5 shadow-lg">
+          {options.map((opt) => {
+            const selected =
+              (opt.label === 'Off' && !gradingEnabled) ||
+              (opt.label === 'Auto grading' && gradingEnabled && gradingMode === 'auto') ||
+              (opt.label === 'Manual grading' && gradingEnabled && gradingMode === 'manual');
+            return (
+              <Pressable
+                key={opt.label}
+                onPress={() => {
+                  opt.onPress();
+                  setOpen(false);
+                }}
+                className={`flex-row items-center gap-2 rounded-lg px-2.5 py-2 ${
+                  selected ? 'bg-violet-50' : ''
+                }`}
+              >
+                <Feather name={opt.icon} size={13} color={selected ? '#7c3aed' : '#6b7280'} />
+                <Text
+                  className={`text-xs font-medium ${selected ? 'text-violet-700' : 'text-ink/70'}`}
+                >
+                  {opt.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
 // Teacher-only: a dropdown listing every student who has submitted this slide, each with a
 // 0-100% GradeSlider wired straight to the setGrade mutation already on `submissions`.
 function GradingPanel({ submissions }: { submissions: ReturnType<typeof useSlideSubmissions> }) {
@@ -1325,15 +1426,21 @@ function StudentGradePanel({
   grade,
   autoResult,
   feedback,
+  gradingMode,
 }: {
   isSubmitted: boolean;
   grade: number | null;
   autoResult: AutoGradeResult | null;
   feedback: string | null;
+  gradingMode: SlideGradingMode;
 }) {
   const [open, setOpen] = useState(false);
-  const hasManualGrade = grade !== null;
-  const percent = hasManualGrade ? grade : (autoResult?.percent ?? null);
+  // Mode is authoritative, not just "is there a manual grade" — matches use-gradebook.ts's
+  // slideSubmissionPercent exactly, so a slide switched back to Auto immediately shows the
+  // live-recomputed percent instead of a stale grade left over from when it was Manual.
+  const hasManualGrade = gradingMode === 'manual' && grade !== null;
+  const percent = gradingMode === 'manual' ? (grade ?? null) : (autoResult?.percent ?? null);
+  const modeLabel = gradingMode === 'auto' ? 'Auto-graded' : 'Teacher-graded';
 
   if (!isSubmitted) {
     return (
@@ -1362,7 +1469,7 @@ function StudentGradePanel({
       >
         <Feather name="award" size={13} color="#059669" />
         <Text className="text-xs font-bold text-emerald-700">
-          {percent}%
+          {modeLabel} · {percent}%
           {!hasManualGrade && autoResult ? ` · ${autoResult.correct}/${autoResult.total} correct` : ''}
         </Text>
         {feedback && <Feather name={open ? 'chevron-up' : 'chevron-down'} size={12} color="#059669" />}
@@ -1399,30 +1506,45 @@ function ToolbarIcon({
   );
 }
 
+// Every button carries its own accent color — a resting tint so it reads as "a draw tool" /
+// "a highlight tool" at a glance instead of a flat gray grid, and a solid fill of that same
+// color once active. Neutral gray (`NEUTRAL_TINT`) for tools with no natural color identity
+// (select/undo/redo/zoom/fullscreen).
+const NEUTRAL_TINT = '#6b7280';
+
 function SlideToolbarButton({
   icon,
   active,
   disabled,
   onPress,
   accessibilityLabel,
+  tint = NEUTRAL_TINT,
 }: {
   icon: ToolbarIconName;
   active?: boolean;
   disabled?: boolean;
   onPress: () => void;
   accessibilityLabel?: string;
+  tint?: string;
 }) {
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       accessibilityLabel={accessibilityLabel}
-      style={{ opacity: disabled ? 0.35 : 1 }}
-      className={`h-9 w-9 items-center justify-center rounded-lg ${
-        active ? 'bg-violet-600' : 'active:bg-black/5'
-      }`}
+      style={{
+        opacity: disabled ? 0.35 : 1,
+        backgroundColor: active ? tint : `${tint}14`,
+        borderWidth: 1,
+        borderColor: active ? tint : `${tint}2a`,
+        shadowColor: tint,
+        shadowOpacity: active ? 0.35 : 0,
+        shadowRadius: 4,
+        shadowOffset: { width: 0, height: 2 },
+      }}
+      className="h-9 w-9 items-center justify-center rounded-xl active:opacity-80"
     >
-      <ToolbarIcon icon={icon} size={17} color={active ? '#fff' : '#4b5563'} />
+      <ToolbarIcon icon={icon} size={17} color={active ? '#fff' : tint} />
     </Pressable>
   );
 }
@@ -1552,44 +1674,57 @@ function SlideToolbarButtons({
         icon={{ set: 'ionicons', name: 'pencil' }}
         active={tool === 'draw'}
         onPress={() => onToolChange('draw')}
+        tint={TOOL_TINTS.draw}
+        accessibilityLabel="Draw"
       />
       <SlideToolbarButton
         icon={{ set: 'ionicons', name: 'brush' }}
         active={tool === 'highlight'}
         onPress={() => onToolChange('highlight')}
+        tint={TOOL_TINTS.highlight}
+        accessibilityLabel="Highlight"
       />
       <SlideToolbarButton
         icon={{ set: 'ionicons', name: 'backspace-outline' }}
         active={tool === 'erase'}
         onPress={() => onToolChange('erase')}
+        tint={TOOL_TINTS.erase}
+        accessibilityLabel="Erase"
       />
 
       {tool === 'draw' && (
-        <View className={rowClass}>
+        <View className={`${rowClass} flex-row items-center gap-2 rounded-xl border border-black/5 bg-white p-2 shadow-sm`}>
           {DRAW_COLORS.map((c) => (
             <Pressable
               key={c}
               onPress={() => onDrawColorChange(c)}
-              style={{ backgroundColor: c, borderWidth: drawColor === c ? 2 : 0 }}
-              className="h-5 w-5 rounded-full border-white"
+              style={{
+                backgroundColor: c,
+                borderWidth: drawColor === c ? 2 : 0,
+                borderColor: '#fff',
+                shadowColor: '#000',
+                shadowOpacity: drawColor === c ? 0.25 : 0,
+                shadowRadius: 3,
+              }}
+              className="h-5 w-5 rounded-full"
             />
           ))}
         </View>
       )}
       {tool === 'draw' && (
-        <View className={rowClass}>
+        <View className={`${rowClass} flex-row items-center gap-2 rounded-xl border border-black/5 bg-white p-2 shadow-sm`}>
           {DRAW_WIDTHS.map((w) => (
             <Pressable
               key={w}
               onPress={() => onDrawWidthChange(w)}
-              className="h-5 w-5 items-center justify-center"
+              className="h-6 w-6 items-center justify-center"
             >
               <View
                 style={{
                   width: w,
                   height: w,
                   borderRadius: w,
-                  backgroundColor: drawWidth === w ? '#7c3aed' : '#9ca3af',
+                  backgroundColor: drawWidth === w ? TOOL_TINTS.draw : '#9ca3af',
                 }}
               />
             </Pressable>
@@ -1605,11 +1740,15 @@ function SlideToolbarButtons({
         icon={{ set: 'feather', name: 'message-circle' }}
         active={pendingKind === 'comment'}
         onPress={onSetPendingComment}
+        tint={TOOL_TINTS.comment}
+        accessibilityLabel="Add comment"
       />
       <SlideToolbarButton
         icon={{ set: 'feather', name: 'type' }}
         active={pendingKind === 'text'}
         onPress={onSetPendingText}
+        tint={TOOL_TINTS.text}
+        accessibilityLabel="Add text"
       />
       <SlideToolbarButton
         icon={{ set: 'ionicons', name: 'shapes-outline' }}
@@ -1618,9 +1757,11 @@ function SlideToolbarButtons({
           setEmojiPickerOpen(false);
           setShapePickerOpen((v) => !v);
         }}
+        tint={TOOL_TINTS.shapes}
+        accessibilityLabel="Add shape"
       />
       {shapePickerOpen && (
-        <View className={rowClass}>
+        <View className={`${rowClass} flex-row items-center gap-1 rounded-xl border border-black/5 bg-white p-1.5 shadow-sm`}>
           {SHAPE_OPTIONS.map(({ shape, icon }) => (
             <Pressable
               key={shape}
@@ -1630,15 +1771,22 @@ function SlideToolbarButtons({
               }}
               className="h-7 w-7 items-center justify-center rounded-md active:bg-black/5"
             >
-              <Feather name={icon} size={14} color="#4b5563" />
+              <Feather name={icon} size={14} color={TOOL_TINTS.shapes} />
             </Pressable>
           ))}
         </View>
       )}
-      <SlideToolbarButton icon={{ set: 'feather', name: 'link' }} onPress={onOpenLinkDialog} />
+      <SlideToolbarButton
+        icon={{ set: 'feather', name: 'link' }}
+        onPress={onOpenLinkDialog}
+        tint={TOOL_TINTS.link}
+        accessibilityLabel="Add link"
+      />
       <SlideToolbarButton
         icon={{ set: 'feather', name: 'image' }}
         onPress={() => comingSoon('Images')}
+        tint={TOOL_TINTS.image}
+        accessibilityLabel="Add image"
       />
       {/* Only the teacher authors questions — students answer them inline on the slide instead. */}
       {canAuthorQuestions && (
@@ -1647,6 +1795,7 @@ function SlideToolbarButtons({
           active={pendingKind === 'fill_blank'}
           onPress={onSetPendingFillBlank}
           accessibilityLabel="Add fill-in-the-blank question"
+          tint={TOOL_TINTS.fillBlank}
         />
       )}
       {canAuthorQuestions && (
@@ -1655,6 +1804,7 @@ function SlideToolbarButtons({
           active={pendingKind === 'multiple_choice'}
           onPress={onSetPendingMultipleChoice}
           accessibilityLabel="Add multiple-choice question"
+          tint={TOOL_TINTS.multipleChoice}
         />
       )}
       <SlideToolbarButton
@@ -1664,10 +1814,12 @@ function SlideToolbarButtons({
           setShapePickerOpen(false);
           setEmojiPickerOpen((v) => !v);
         }}
+        tint={TOOL_TINTS.emoji}
+        accessibilityLabel="Add emoji"
       />
       {emojiPickerOpen && (
         <View
-          className={`${vertical ? 'flex-row flex-wrap justify-center' : 'flex-row flex-wrap'} ${rowClass} max-w-[140px]`}
+          className={`${vertical ? 'flex-row flex-wrap justify-center' : 'flex-row flex-wrap'} ${rowClass} max-w-[150px] rounded-xl border border-black/5 bg-white p-1.5 shadow-sm`}
         >
           {EMOJI_OPTIONS.map((emoji) => (
             <Pressable
@@ -1686,10 +1838,14 @@ function SlideToolbarButtons({
       <SlideToolbarButton
         icon={{ set: 'feather', name: 'paperclip' }}
         onPress={() => comingSoon('File attachments')}
+        tint={TOOL_TINTS.file}
+        accessibilityLabel="Attach file"
       />
       <SlideToolbarButton
         icon={{ set: 'feather', name: 'mic' }}
         onPress={() => comingSoon('Voice notes')}
+        tint={TOOL_TINTS.voice}
+        accessibilityLabel="Record voice note"
       />
     </View>
   );
@@ -1721,7 +1877,7 @@ function SlideTimer({
   const fullSeconds = (durationMinutes ?? 0) * 60;
   const [seconds, setSeconds] = useState(fullSeconds);
   const [expired, setExpired] = useState(false);
-  const [blinkOn, setBlinkOn] = useState(true);
+  const blinkOn = useBlink(expired);
   // Whether THIS viewer's own countdown has begun, and the last `timerCommand` seen — plain
   // state (not refs: this repo's lint config forbids touching refs during render), read/written
   // only by the render-time transition check right below.
@@ -1764,12 +1920,6 @@ function SlideTimer({
     }, 1000);
     return () => clearInterval(interval);
   }, [timerCommand]);
-
-  useEffect(() => {
-    if (!expired) return;
-    const interval = setInterval(() => setBlinkOn((b) => !b), 500);
-    return () => clearInterval(interval);
-  }, [expired]);
 
   // Optimistic local resets (mirrored by the effect above once the mutation round-trips back
   // through the realtime-synced slide list) so a teacher's own controls feel instant instead

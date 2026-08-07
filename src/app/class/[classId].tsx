@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  Image,
   Linking,
   PanResponder,
   Pressable,
@@ -19,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StudentClassView } from '@/components/class/student-class-view';
 import { TEACHER_SIDEBAR_ITEMS, TeacherSidebar } from '@/components/layout/teacher-sidebar';
+import { SlideThumbnailTile } from '@/components/lessons/slide-thumbnail-tile';
 import { WeekFolderCard, weekColor } from '@/components/lessons/week-folder';
 import { ClassReportsDashboard } from '@/components/reports/class-reports-dashboard';
 import { SLIDE_TAGS, SlideViewerModal } from '@/components/slides/slide-viewer';
@@ -38,6 +38,7 @@ import type {
 import { useLessonAiResources } from '@/hooks/queries/use-lesson-ai-resources';
 import { useLessonResources } from '@/hooks/queries/use-lesson-resources';
 import { useLessonSlides } from '@/hooks/queries/use-lesson-slides';
+import { useStudentLiveClassPresence } from '@/hooks/queries/use-live-class-session';
 import { usePortfolioFiles } from '@/hooks/queries/use-portfolio-files';
 import { usePortfolioFolders } from '@/hooks/queries/use-portfolio-folders';
 import { signOut } from '@/lib/auth-actions';
@@ -78,7 +79,13 @@ type Section =
 
 const AI_TASK_META: Record<
   AiTaskKind,
-  { label: string; shortLabel: string; color: string; bg: string; icon: keyof typeof Feather.glyphMap }
+  {
+    label: string;
+    shortLabel: string;
+    color: string;
+    bg: string;
+    icon: keyof typeof Feather.glyphMap;
+  }
 > = {
   khan_academy_video: {
     label: 'Khan Academy Video',
@@ -287,6 +294,8 @@ export default function ClassLessonsScreen() {
           <ScrollView className="flex-1" contentContainerClassName="gap-6 p-6">
             {section === 'lessons' && (
               <LessonsSection
+                classId={classId}
+                students={students}
                 weeks={weeks}
                 countByWeek={countByWeek}
                 resources={resources}
@@ -302,12 +311,22 @@ export default function ClassLessonsScreen() {
                   setTaskPickerOpen(true);
                 }}
                 onToggleLiveSession={(resource, live) =>
-                  setLiveSession.mutate({ resourceId: resource.id, live }, {
-                    onSuccess: () => showFlash(live ? `${resource.title} is now live.` : `${resource.title} is no longer live.`),
-                    onError: () => showFlash("Couldn't update the live session."),
-                  })
+                  setLiveSession.mutate(
+                    { resourceId: resource.id, live },
+                    {
+                      onSuccess: () =>
+                        showFlash(
+                          live
+                            ? `${resource.title} is now live.`
+                            : `${resource.title} is no longer live.`,
+                        ),
+                      onError: () => showFlash("Couldn't update the live session."),
+                    },
+                  )
                 }
-                onViewProgress={(resource) => router.push(`/class-progress/${classId}?resourceId=${resource.id}`)}
+                onViewProgress={(resource) =>
+                  router.push(`/class-progress/${classId}?resourceId=${resource.id}`)
+                }
                 fileActions={fileActions}
               />
             )}
@@ -447,7 +466,76 @@ function StatItem({ label, value }: { label: string; value: number }) {
   );
 }
 
+// A class-wide "who's active right now" indicator — real, not aspirational: presence already
+// exists per-student (use-live-class-session.ts's class-students:{classId} channel, already
+// powering the per-lesson class-progress monitor), it just had no entry point outside of
+// opening one specific lesson's action row first. Clicking a name jumps straight into that
+// student's live monitor view for the resource they're actually on.
+function ClassActivityIndicator({
+  classId,
+  students,
+}: {
+  classId: string;
+  students: { id: string; full_name: string }[];
+}) {
+  const router = useRouter();
+  const presenceByStudent = useStudentLiveClassPresence(classId);
+  const [open, setOpen] = useState(false);
+  const active = Object.values(presenceByStudent).filter((p) => p.resourceId);
+  const nameById = new Map(students.map((s) => [s.id, s.full_name]));
+
+  if (active.length === 0) {
+    return (
+      <View className="flex-row items-center gap-1.5 rounded-full bg-black/[0.03] px-3 py-2">
+        <View className="h-2 w-2 rounded-full bg-black/15" />
+        <Text className="text-xs font-medium text-ink/40">No students active</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View>
+      <Pressable
+        onPress={() => setOpen((v) => !v)}
+        className="flex-row items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-2"
+      >
+        <View className="h-2 w-2 rounded-full bg-emerald-500" />
+        <Text className="text-xs font-semibold text-emerald-700">
+          {active.length} active now
+        </Text>
+        <Feather name={open ? 'chevron-up' : 'chevron-down'} size={12} color="#059669" />
+      </Pressable>
+      {open && (
+        <View className="absolute right-0 top-11 z-30 w-72 gap-0.5 rounded-xl bg-white p-2 shadow-lg">
+          <Text className="px-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-ink/40">
+            Active now
+          </Text>
+          <ScrollView style={{ maxHeight: 280 }}>
+            {active.map((p) => (
+              <Pressable
+                key={p.studentId}
+                onPress={() => {
+                  setOpen(false);
+                  router.push(`/class-progress/${classId}?resourceId=${p.resourceId}`);
+                }}
+                className="flex-row items-center justify-between gap-2 rounded-lg px-2 py-2 active:bg-black/5"
+              >
+                <Text className="flex-1 text-xs font-medium text-ink" numberOfLines={1}>
+                  {nameById.get(p.studentId) ?? 'Student'}
+                </Text>
+                <Text className="text-[10px] text-ink/40">Slide {(p.slideIndex ?? 0) + 1}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+}
+
 interface LessonsSectionProps {
+  classId: string;
+  students: { id: string; full_name: string }[];
   weeks: number[];
   countByWeek: Map<number, number>;
   resources: LessonResource[];
@@ -464,6 +552,8 @@ interface LessonsSectionProps {
 }
 
 function LessonsSection({
+  classId,
+  students,
   weeks,
   countByWeek,
   resources,
@@ -480,12 +570,18 @@ function LessonsSection({
 }: LessonsSectionProps) {
   return (
     <>
-      <View className="flex-row flex-wrap items-center justify-between gap-3">
+      {/* z-20 here (not just on the dropdown itself) so ClassActivityIndicator's absolutely-
+          positioned panel can actually paint above the week-grid/lesson-cards content below —
+          a later-in-DOM sibling otherwise wins regardless of the dropdown's own z-index, since
+          only an ancestor's stacking context is compared against that sibling. Same fix as the
+          fullscreen slide-viewer header's z-20 for the same reason. */}
+      <View className="z-20 flex-row flex-wrap items-center justify-between gap-3">
         <View>
           <Text className="text-2xl font-bold text-ink">My Lessons</Text>
           <Text className="text-sm text-ink/50">Organize and manage your lessons by week</Text>
         </View>
         <View className="flex-row items-center gap-2">
+          <ClassActivityIndicator classId={classId} students={students} />
           <View className="w-72 flex-row items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2.5">
             <Feather name="search" size={15} color="#9ca3af" />
             <TextInput
@@ -891,8 +987,12 @@ function SlideThumbnailGroup({
                 resource.is_live_session ? 'bg-emerald-600' : 'bg-black/[0.05]'
               }`}
             >
-              <View className={`h-2 w-2 rounded-full ${resource.is_live_session ? 'bg-white' : 'bg-emerald-500'}`} />
-              <Text className={`text-[11px] font-semibold ${resource.is_live_session ? 'text-white' : 'text-ink/70'}`}>
+              <View
+                className={`h-2 w-2 rounded-full ${resource.is_live_session ? 'bg-white' : 'bg-emerald-500'}`}
+              />
+              <Text
+                className={`text-[11px] font-semibold ${resource.is_live_session ? 'text-white' : 'text-ink/70'}`}
+              >
                 {resource.is_live_session ? 'Live now' : 'Go live'}
               </Text>
             </Pressable>
@@ -1006,7 +1106,9 @@ function SlideThumbnailGroup({
               </>
             )}
           </View>
-          <Text className="text-center text-[10px] font-medium text-ink/45">After Slide {slides?.length ?? 0}</Text>
+          <Text className="text-center text-[10px] font-medium text-ink/45">
+            After Slide {slides?.length ?? 0}
+          </Text>
         </Pressable>
 
         {(attachedTasks ?? [])
@@ -1056,7 +1158,9 @@ function SlideThumbnailGroup({
                     <Feather name="x" size={10} color="#6b7280" />
                   </Pressable>
                 </View>
-                <Text className="text-center text-[10px] font-medium text-ink/45">After Slide {(slides?.length ?? 0) + i + 1}</Text>
+                <Text className="text-center text-[10px] font-medium text-ink/45">
+                  After Slide {(slides?.length ?? 0) + i + 1}
+                </Text>
               </Pressable>
             );
           })}
@@ -1068,7 +1172,9 @@ function SlideThumbnailGroup({
           className="flex-row items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1"
         >
           <Feather name="plus" size={10} color="#6d28d9" />
-          <Text className="text-[9px] font-semibold text-violet-700">Additional Resources/Tasks</Text>
+          <Text className="text-[9px] font-semibold text-violet-700">
+            Additional Resources/Tasks
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -1198,7 +1304,9 @@ function FileCard({
           className="flex-row items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1"
         >
           <Feather name="plus" size={10} color="#6d28d9" />
-          <Text className="text-[9px] font-semibold text-violet-700">Additional Resources/Tasks</Text>
+          <Text className="text-[9px] font-semibold text-violet-700">
+            Additional Resources/Tasks
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -1248,7 +1356,9 @@ function DraggableSlideCard({
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_evt, gestureState) =>
-          !selectionMode && !disabled && (Math.abs(gestureState.dx) > 6 || Math.abs(gestureState.dy) > 6),
+          !selectionMode &&
+          !disabled &&
+          (Math.abs(gestureState.dx) > 6 || Math.abs(gestureState.dy) > 6),
         onPanResponderGrant: () => {
           setDragging(true);
           pan.extractOffset();
@@ -1275,91 +1385,24 @@ function DraggableSlideCard({
   return (
     <Animated.View
       {...(!selectionMode && !disabled ? panResponder.panHandlers : {})}
-      style={{ width: 124, transform: [{ translateX: pan.x }, { translateY: pan.y }] }}
-      className="gap-1"
+      style={{ transform: [{ translateX: pan.x }, { translateY: pan.y }] }}
     >
-      <Pressable
-        onPress={() => (selectionMode ? onToggleSelected() : onOpen())}
-        accessibilityLabel={selectionMode ? `${isSelected ? 'Deselect' : 'Select'} slide ${index + 1}` : `Open slide ${index + 1}`}
-      >
-        <View
-          style={{
-            height: 90,
-            backgroundColor: tag ? `${tag.color}1f` : 'rgba(0,0,0,0.04)',
-            borderColor: isSelected ? '#7c3aed' : tag ? `${tag.color}55` : 'rgba(0,0,0,0.1)',
-            borderWidth: isSelected ? 2 : 1,
-          }}
-          className="items-center justify-center overflow-hidden rounded-lg border"
-        >
-          {slide.url ? (
-            <Image source={{ uri: slide.url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-          ) : (
-            <ActivityIndicator size="small" />
-          )}
-
-          {isTeacherPaced && (
-            <View className="absolute left-1 top-1 h-4 w-4 items-center justify-center rounded-full bg-black/60">
-              <Feather name="lock" size={9} color="#fff" />
-            </View>
-          )}
-
-          {selectionMode ? (
-            <View
-              className={`absolute right-1 top-1 h-5 w-5 items-center justify-center rounded-full ${
-                isSelected ? 'bg-violet-600' : 'bg-white/80'
-              }`}
-              style={!isSelected ? { borderWidth: 1.5, borderColor: '#c4b5fd' } : undefined}
-            >
-              {isSelected && <Text className="text-xs font-bold text-white">✓</Text>}
-            </View>
-          ) : null}
-        </View>
-      </Pressable>
-
-      <Text className="text-center text-[10px] font-medium text-ink/50">Slide {index + 1}</Text>
-      {tag && (
-        <Text style={{ color: tag.color }} className="text-center text-[9px] font-semibold" numberOfLines={1}>
-          {tag.label}
-        </Text>
-      )}
-      {Boolean(slide.duration_minutes) && (
-        <View className="flex-row items-center justify-center gap-1">
-          <Feather name="clock" size={9} color="#9ca3af" />
-          <Text className="text-[9px] text-ink/40">{slide.duration_minutes}m</Text>
-        </View>
-      )}
-      {!selectionMode && (
-        <View className="flex-row items-center justify-center gap-1">
-          <Pressable
-            onPress={() => onMove(index, Math.max(0, index - 1))}
-            disabled={disabled || index === 0}
-            className="h-5 w-5 items-center justify-center rounded-full bg-black/5"
-            style={{ opacity: disabled || index === 0 ? 0.35 : 1 }}
-            accessibilityLabel="Move slide left"
-          >
-            <Feather name="chevron-left" size={10} color="#4b5563" />
-          </Pressable>
-          <Pressable
-            onPress={() => onMove(index, Math.min(total - 1, index + 1))}
-            disabled={disabled || index >= total - 1}
-            className="h-5 w-5 items-center justify-center rounded-full bg-black/5"
-            style={{ opacity: disabled || index >= total - 1 ? 0.35 : 1 }}
-            accessibilityLabel="Move slide right"
-          >
-            <Feather name="chevron-right" size={10} color="#4b5563" />
-          </Pressable>
-          <Pressable
-            onPress={onDelete}
-            disabled={disabled}
-            className="h-5 w-5 items-center justify-center rounded-full bg-red-50"
-            style={{ opacity: disabled ? 0.35 : 1 }}
-            accessibilityLabel="Delete slide"
-          >
-            <Feather name="trash-2" size={10} color="#ef4444" />
-          </Pressable>
-        </View>
-      )}
-      {!selectionMode && <Text className="text-center text-[8px] text-ink/35">Drag to reorder</Text>}
+      <SlideThumbnailTile
+        slide={slide}
+        index={index}
+        total={total}
+        tag={tag}
+        isTeacherPaced={isTeacherPaced}
+        onOpen={onOpen}
+        editable
+        isSelected={isSelected}
+        selectionMode={selectionMode}
+        disabled={disabled}
+        onToggleSelected={onToggleSelected}
+        onMoveLeft={() => onMove(index, Math.max(0, index - 1))}
+        onMoveRight={() => onMove(index, Math.min(total - 1, index + 1))}
+        onDelete={onDelete}
+      />
       {dragging && <Text className="text-center text-[8px] text-violet-700">Release to place</Text>}
     </Animated.View>
   );
@@ -1402,13 +1445,17 @@ function TaskPickerOverlay({
   const handleAttach = (kind: AiTaskKind, content: AttachedCardContent, label: string) => {
     const resolvedContent =
       kind === 'custom_mcqs'
-        ? (content as McqQuestion[]).map((mcq, i) => ({ ...mcq, points: mcqWeights.get(String(i)) }))
+        ? (content as McqQuestion[]).map((mcq, i) => ({
+            ...mcq,
+            points: mcqWeights.get(String(i)),
+          }))
         : content;
     attachCard.mutate(
       { kind, content: resolvedContent },
       {
         onSuccess: () => onAttached(label),
-        onError: () => Alert.alert('Could not attach', "Couldn't attach this resource to the lesson."),
+        onError: () =>
+          Alert.alert('Could not attach', "Couldn't attach this resource to the lesson."),
       },
     );
   };
@@ -1452,13 +1499,15 @@ function TaskPickerOverlay({
               ) : (
                 generate.isError && (
                   <Text className="text-xs text-red-600">
-                    {generate.error instanceof Error ? generate.error.message : 'Something went wrong.'}
+                    {generate.error instanceof Error
+                      ? generate.error.message
+                      : 'Something went wrong.'}
                   </Text>
                 )
               )}
               <Text className="text-sm text-ink/60">
-                Analyze this lesson with AI to get a real Khan Academy video, a real Quizizz quiz, and
-                5 custom MCQs tailored to it.
+                Analyze this lesson with AI to get a real Khan Academy video, a real Quizizz quiz,
+                and 5 custom MCQs tailored to it.
               </Text>
               <Pressable
                 onPress={regenerate}
@@ -1534,7 +1583,9 @@ function TaskPickerOverlay({
                   <Text className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
                     Custom MCQs
                   </Text>
-                  <Text className="text-sm font-bold text-ink">{mcqs.length} original questions</Text>
+                  <Text className="text-sm font-bold text-ink">
+                    {mcqs.length} original questions
+                  </Text>
                   <Pressable onPress={() => setExpandedMcqs((v) => !v)}>
                     <Text className="text-xs font-semibold text-amber-700">
                       {expandedMcqs ? 'Hide questions' : 'Show questions'}
@@ -1548,53 +1599,58 @@ function TaskPickerOverlay({
                         String(i),
                       );
                       return (
-                      <View key={i} className="gap-1 rounded-lg bg-white/70 p-2.5">
-                        <View className="flex-row items-start justify-between gap-2">
-                          <Text className="flex-1 text-xs font-semibold text-ink">
-                            {i + 1}. {mcq.question}
-                          </Text>
-                          <View className="flex-row items-center gap-1 rounded-md bg-black/5 px-1 py-0.5">
-                            <Pressable
-                              onPress={() =>
-                                setManualPoints((prev) => ({ ...prev, [i]: Math.max(0, weight - 1) }))
-                              }
-                              hitSlop={4}
-                              className="h-4 w-4 items-center justify-center rounded bg-white"
-                            >
-                              <Feather name="minus" size={9} color="#4b5563" />
-                            </Pressable>
-                            <Text className="w-8 text-center text-[10px] font-bold text-ink">
-                              {weight} pts
+                        <View key={i} className="gap-1 rounded-lg bg-white/70 p-2.5">
+                          <View className="flex-row items-start justify-between gap-2">
+                            <Text className="flex-1 text-xs font-semibold text-ink">
+                              {i + 1}. {mcq.question}
                             </Text>
-                            <Pressable
-                              onPress={() =>
-                                setManualPoints((prev) => ({
-                                  ...prev,
-                                  [i]: Math.min(maxWeight, weight + 1),
-                                }))
-                              }
-                              disabled={weight >= maxWeight}
-                              style={{ opacity: weight >= maxWeight ? 0.4 : 1 }}
-                              hitSlop={4}
-                              className="h-4 w-4 items-center justify-center rounded bg-white"
-                            >
-                              <Feather name="plus" size={9} color="#4b5563" />
-                            </Pressable>
+                            <View className="flex-row items-center gap-1 rounded-md bg-black/5 px-1 py-0.5">
+                              <Pressable
+                                onPress={() =>
+                                  setManualPoints((prev) => ({
+                                    ...prev,
+                                    [i]: Math.max(0, weight - 1),
+                                  }))
+                                }
+                                hitSlop={4}
+                                className="h-4 w-4 items-center justify-center rounded bg-white"
+                              >
+                                <Feather name="minus" size={9} color="#4b5563" />
+                              </Pressable>
+                              <Text className="w-8 text-center text-[10px] font-bold text-ink">
+                                {weight} pts
+                              </Text>
+                              <Pressable
+                                onPress={() =>
+                                  setManualPoints((prev) => ({
+                                    ...prev,
+                                    [i]: Math.min(maxWeight, weight + 1),
+                                  }))
+                                }
+                                disabled={weight >= maxWeight}
+                                style={{ opacity: weight >= maxWeight ? 0.4 : 1 }}
+                                hitSlop={4}
+                                className="h-4 w-4 items-center justify-center rounded bg-white"
+                              >
+                                <Feather name="plus" size={9} color="#4b5563" />
+                              </Pressable>
+                            </View>
                           </View>
+                          {mcq.choices.map((choice, ci) => (
+                            <Text
+                              key={ci}
+                              className={`text-[11px] ${
+                                ci === mcq.correctIndex
+                                  ? 'font-semibold text-emerald-700'
+                                  : 'text-ink/60'
+                              }`}
+                            >
+                              {String.fromCharCode(65 + ci)}. {choice}
+                              {ci === mcq.correctIndex ? '  ✓' : ''}
+                            </Text>
+                          ))}
+                          <Text className="text-[10px] italic text-ink/40">{mcq.explanation}</Text>
                         </View>
-                        {mcq.choices.map((choice, ci) => (
-                          <Text
-                            key={ci}
-                            className={`text-[11px] ${
-                              ci === mcq.correctIndex ? 'font-semibold text-emerald-700' : 'text-ink/60'
-                            }`}
-                          >
-                            {String.fromCharCode(65 + ci)}. {choice}
-                            {ci === mcq.correctIndex ? '  ✓' : ''}
-                          </Text>
-                        ))}
-                        <Text className="text-[10px] italic text-ink/40">{mcq.explanation}</Text>
-                      </View>
                       );
                     })}
                 </View>
@@ -1815,7 +1871,11 @@ function GradebookSection({ classId }: { classId: string }) {
                         hitSlop={4}
                         accessibilityLabel={`Move ${col.label} left`}
                       >
-                        <Feather name="chevron-left" size={12} color={i === 0 ? '#d1d5db' : '#6b7280'} />
+                        <Feather
+                          name="chevron-left"
+                          size={12}
+                          color={i === 0 ? '#d1d5db' : '#6b7280'}
+                        />
                       </Pressable>
                       {renamingColumnId === col.id ? (
                         <TextInput
@@ -1856,9 +1916,23 @@ function GradebookSection({ classId }: { classId: string }) {
                         />
                       </Pressable>
                     </View>
+                    {col.kind === 'slide' && col.gradingMode && (
+                      <View className="flex-row items-center justify-center gap-0.5">
+                        <Feather
+                          name={col.gradingMode === 'auto' ? 'zap' : 'edit-3'}
+                          size={8}
+                          color="#9ca3af"
+                        />
+                        <Text className="text-[8px] font-medium text-ink/40">
+                          {col.gradingMode === 'auto' ? 'Auto' : 'Manual'}
+                        </Text>
+                      </View>
+                    )}
                     {col.kind === 'custom' && (
                       <Pressable
-                        onPress={() => columnActions.deleteColumn.mutate(col.id.replace('custom:', ''))}
+                        onPress={() =>
+                          columnActions.deleteColumn.mutate(col.id.replace('custom:', ''))
+                        }
                         accessibilityLabel={`Delete ${col.label} column`}
                         className="items-center"
                       >
