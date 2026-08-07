@@ -55,7 +55,36 @@ export function useTeacherStudentSlideSubmission(slideId: string | null, student
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });
 
-  return { ...query, saveTeacherAnnotations, saveTeacherComment };
+  // Manual grading straight from the live monitor (class-progress/[classId].tsx's
+  // TeacherReviewModal) — reuses the same upsert-even-if-no-row-yet RPC as the annotations/
+  // comment above, so a teacher can grade a slide the student hasn't formally submitted.
+  // Broad prefix invalidation (not just this hook's own queryKey) is what makes the grade show
+  // up immediately in both the teacher's Gradebook and the student's own Gradebook/Grades —
+  // same reasoning as useSlideSubmissions.setGrade's onSuccess below.
+  const setGrade = useMutation({
+    // `grade` is optional too (not just `feedback`) so a feedback-only save (e.g. blurring the
+    // comment box without touching the slider) never accidentally forces the grade to a value —
+    // the RPC's `next_grade` coalesces onto the existing grade whenever it's omitted, same as
+    // `next_feedback` already does.
+    mutationFn: async (input: { grade?: number; feedback?: string }) => {
+      const { error } = await supabase.rpc('upsert_teacher_slide_overlay', {
+        target_slide_id: slideId!,
+        target_student_id: studentId!,
+        ...(input.grade !== undefined ? { next_grade: input.grade } : {}),
+        ...(input.feedback !== undefined ? { next_feedback: input.feedback } : {}),
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: ['gradebook'] });
+      queryClient.invalidateQueries({ queryKey: ['student-grades'] });
+      queryClient.invalidateQueries({ queryKey: ['my-gradebook'] });
+      queryClient.invalidateQueries({ queryKey: ['lesson-monitor-resource-submissions'] });
+    },
+  });
+
+  return { ...query, saveTeacherAnnotations, saveTeacherComment, setGrade };
 }
 
 // Teacher-facing: every student's submission row for a slide, to show who has completed it.
@@ -92,10 +121,14 @@ export function useSlideSubmissions(slideId: string | null) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['slide-submissions', slideId] });
       // A grade set here also needs to show up on the class Gradebook and the student's own
-      // Grades tab — both prefix-matched (no classId/studentId available in this hook), so a
-      // grade change doesn't sit stale in either until some unrelated refetch happens to run.
+      // Grades/Gradebook tabs — all prefix-matched (no classId/studentId available in this
+      // hook), so a grade change doesn't sit stale in any of them until some unrelated refetch
+      // happens to run. `my-gradebook` was missed when the student Gradebook tab was added
+      // (this mutation predates it) — same class of gap as `setGrade` on
+      // `useTeacherStudentSlideSubmission` above, fixed here too.
       queryClient.invalidateQueries({ queryKey: ['gradebook'] });
       queryClient.invalidateQueries({ queryKey: ['student-grades'] });
+      queryClient.invalidateQueries({ queryKey: ['my-gradebook'] });
     },
   });
 

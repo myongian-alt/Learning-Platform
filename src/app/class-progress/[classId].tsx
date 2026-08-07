@@ -6,15 +6,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SlideCanvas, type SlideTool } from '@/components/canvas/slide-canvas';
 import { SlideObjectsLayer } from '@/components/canvas/slide-objects-layer';
+import { GradeSlider } from '@/components/slides/grade-slider';
 import { useClassDetail } from '@/hooks/queries/use-class-detail';
 import {
   type ActivitySignal,
   type LessonMonitorStudent,
   useLessonLiveMonitor,
 } from '@/hooks/queries/use-lesson-live-monitor';
-import type { SlideStroke, ViewableSlide } from '@/hooks/queries/use-lesson-slides';
+import type { SlideAnswers, SlideObject, SlideStroke, ViewableSlide } from '@/hooks/queries/use-lesson-slides';
 import { useLessonResources } from '@/hooks/queries/use-lesson-resources';
 import { useTeacherStudentSlideSubmission } from '@/hooks/queries/use-slide-submissions';
+import { autoGradeSlide } from '@/lib/slide-grading';
 
 type FilterKey = 'live' | 'inactive' | 'submitted' | null;
 
@@ -457,6 +459,9 @@ function TeacherReviewModal({
               <Text className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Activity</Text>
               <Text className="mt-2 text-sm font-semibold text-slate-700">{student.lastEventType ?? 'Watching'}</Text>
             </View>
+            {slide.grading_enabled && (
+              <GradeSection student={student} slide={slide} demo={demo} teacherSubmission={teacherSubmission} />
+            )}
             <View>
               <Text className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Teacher comment</Text>
               <TextInput
@@ -481,6 +486,84 @@ function TeacherReviewModal({
           </View>
         </View>
       </View>
+    </View>
+  );
+}
+
+// Manual grading directly from the live monitor — auto-graded slides just show the live-computed
+// result instead (there's nothing for a teacher to enter), matching how grading mode is treated
+// everywhere else in this app. Feedback is seeded from the query the same render-time-adjust way
+// `slide-viewer.tsx`'s `myAnswers` is: a one-shot `useState` initializer would permanently lock in
+// `''` if this modal opens before `teacherSubmission` resolves.
+function GradeSection({
+  student,
+  slide,
+  demo,
+  teacherSubmission,
+}: {
+  student: LessonMonitorStudent;
+  slide: ViewableSlide;
+  demo: boolean;
+  teacherSubmission: ReturnType<typeof useTeacherStudentSlideSubmission>;
+}) {
+  const loadedFeedback = teacherSubmission.data?.feedback ?? '';
+  const [draftFeedback, setDraftFeedback] = useState('');
+  const [seededFeedback, setSeededFeedback] = useState<string | null>(null);
+  if (!demo && !teacherSubmission.isLoading && seededFeedback !== loadedFeedback) {
+    setSeededFeedback(loadedFeedback);
+    setDraftFeedback(loadedFeedback);
+  }
+
+  if (slide.grading_mode === 'auto') {
+    const result = autoGradeSlide(
+      (slide.objects ?? []) as unknown as SlideObject[],
+      (student.answers ?? {}) as unknown as SlideAnswers,
+    );
+    return (
+      <View>
+        <Text className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Grade</Text>
+        <Text className="mt-2 text-sm font-semibold text-slate-700">
+          {result ? `Auto-graded: ${result.percent}%` : 'No auto-graded questions on this slide.'}
+        </Text>
+      </View>
+    );
+  }
+
+  if (demo || teacherSubmission.isLoading) {
+    return <Text className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Grade</Text>;
+  }
+
+  if (!teacherSubmission.data) {
+    return (
+      <View>
+        <Text className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Grade</Text>
+        <Text className="mt-2 text-sm text-slate-500">Nothing submitted for this slide yet.</Text>
+      </View>
+    );
+  }
+
+  const commitFeedback = () => {
+    if (draftFeedback !== loadedFeedback) teacherSubmission.setGrade.mutate({ feedback: draftFeedback });
+  };
+
+  return (
+    <View>
+      <Text className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Grade</Text>
+      <View className="mt-2">
+        <GradeSlider
+          value={teacherSubmission.data.grade}
+          onCommit={(grade) => teacherSubmission.setGrade.mutate({ grade })}
+        />
+      </View>
+      <TextInput
+        value={draftFeedback}
+        onChangeText={setDraftFeedback}
+        onBlur={commitFeedback}
+        onSubmitEditing={commitFeedback}
+        placeholder="Add feedback…"
+        multiline
+        className="mt-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700"
+      />
     </View>
   );
 }

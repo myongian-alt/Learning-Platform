@@ -1350,6 +1350,8 @@ export type Database = {
       };
       upsert_teacher_slide_overlay: {
         Args: {
+          next_feedback?: string;
+          next_grade?: number;
           next_teacher_annotations?: Json;
           next_teacher_comment?: string;
           target_slide_id: string;
