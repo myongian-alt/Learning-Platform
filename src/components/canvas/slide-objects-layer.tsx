@@ -121,14 +121,20 @@ export function SlideObjectsLayer({
   // transparent to hit-testing (letting clicks reach whatever's stacked below it, e.g. the
   // student's own interactive layer rendered on top of it) while its question-object children
   // still catch their own taps via their explicit per-item `pointerEvents="auto"`.
+  //
+  // MUST be passed as the standalone `pointerEvents` prop, not folded into `style` — React
+  // Native Web's inline-style compiler has no special case for 'box-none'/'box-only' (only its
+  // `StyleSheet.create`/atomic path does), so `style={{pointerEvents: 'box-none'}}` silently
+  // emits invalid CSS that browsers drop, leaving the container's computed pointer-events at
+  // the inherited default ('auto') — i.e. it swallows every gesture across the full slide
+  // instead of letting them through, exactly the bug that made student drawing invisible on
+  // any slide with teacher-placed objects.
   const containerPointerEvents = pending || interactive ? 'auto' : answerable ? 'box-none' : 'none';
 
   return (
     <Pressable
-      style={{
-        ...StyleSheet.absoluteFillObject,
-        pointerEvents: containerPointerEvents,
-      }}
+      style={StyleSheet.absoluteFillObject}
+      pointerEvents={containerPointerEvents}
       onPress={(e) => {
         if (pending) {
           // React Native Web's Pressable passes the raw DOM MouseEvent through as

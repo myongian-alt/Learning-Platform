@@ -19,12 +19,23 @@ interface SharedRealtimeChannel {
 }
 const sharedRealtimeChannels = new Map<string, SharedRealtimeChannel>();
 
-function acquireRealtimeChannel(key: string, table: string, filter: string, onEvent: () => void) {
+function acquireRealtimeChannel(
+  key: string,
+  table: string,
+  filter: string | null,
+  onEvent: () => void,
+) {
   let entry = sharedRealtimeChannels.get(key);
   if (!entry) {
     const channel = supabase.channel(`realtime:${key}`);
     const created: SharedRealtimeChannel = { channel, refCount: 0, listeners: new Set() };
-    channel.on('postgres_changes', { event: '*', schema: 'public', table, filter }, () => {
+    // `filter` omitted entirely (not just falsy) subscribes table-wide — Supabase treats a
+    // present-but-empty filter differently, so this can't just be `filter: filter ?? undefined`
+    // folded into one object literal.
+    const config = filter
+      ? { event: '*' as const, schema: 'public', table, filter }
+      : { event: '*' as const, schema: 'public', table };
+    channel.on('postgres_changes', config, () => {
       created.listeners.forEach((fn) => fn());
     });
     channel.subscribe();
@@ -46,14 +57,17 @@ function releaseRealtimeChannel(key: string, onEvent: () => void) {
   }
 }
 
-// Subscribes to Postgres Changes on `table` (scoped by `filter`, e.g. "resource_id=eq.<uuid>")
-// and invalidates `queryKey` on any insert/update/delete — a thin, reusable bridge from
-// Supabase Realtime to TanStack Query for data that multiple viewers (a teacher plus several
-// students, or a teacher's own two screens at once) need to see change live without a manual
-// refresh, e.g. a slide's `timer_command` or a submission's `grade`. `queryKey` is read from a
-// ref (kept current every render, same reasoning as the payloadRef pattern in
-// use-live-class-session.ts) so passing a fresh array literal each render doesn't force a
-// resubscribe — only `table`/`filter`/`enabled` do that.
+// Subscribes to Postgres Changes on `table` (scoped by `filter`, e.g. "resource_id=eq.<uuid>",
+// or `null` for every row in the table) and invalidates `queryKey` on any insert/update/delete
+// — a thin, reusable bridge from Supabase Realtime to TanStack Query for data that multiple
+// viewers (a teacher plus several students, or a teacher's own two screens at once) need to see
+// change live without a manual refresh, e.g. a slide's `timer_command`, a submission's `grade`,
+// or every submission for a lesson a teacher is monitoring. `enabled` is the sole "should this
+// subscribe at all" switch — every existing caller already only passes `filter: null` together
+// with `enabled: false`, so a `null` filter while enabled is unambiguously "no filter," not
+// "don't subscribe." `queryKey` is read from a ref (kept current every render, same reasoning
+// as the payloadRef pattern in use-live-class-session.ts) so passing a fresh array literal each
+// render doesn't force a resubscribe — only `table`/`filter`/`enabled` do that.
 export function useRealtimeInvalidate(
   table: string,
   filter: string | null,
@@ -67,8 +81,8 @@ export function useRealtimeInvalidate(
   }, [queryKey]);
 
   useEffect(() => {
-    if (!enabled || !filter) return;
-    const key = `${table}:${filter}`;
+    if (!enabled) return;
+    const key = `${table}:${filter ?? '*'}`;
     const onEvent = () => queryClient.invalidateQueries({ queryKey: queryKeyRef.current });
     acquireRealtimeChannel(key, table, filter, onEvent);
     return () => releaseRealtimeChannel(key, onEvent);

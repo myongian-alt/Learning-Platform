@@ -1,6 +1,6 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
+import { useRealtimeInvalidate } from '@/hooks/use-realtime-invalidate';
 import { supabase } from '@/lib/supabase';
 import type { LessonLivePresence, SlidePacingMode, SlideSubmission } from '@/types/database';
 
@@ -110,7 +110,6 @@ function computeSignal(lastActiveAt: string | null, isOnlineNow: boolean): {
 }
 
 export function useLessonLiveMonitor(classId: string | null, resourceId: string | null) {
-  const queryClient = useQueryClient();
   const teacherLive = useLiveClassSessions(classId ? [classId] : []);
   const liveStudents = useStudentLiveClassPresence(classId);
   const slidesQuery = useLessonSlides(resourceId);
@@ -157,46 +156,27 @@ export function useLessonLiveMonitor(classId: string | null, resourceId: string 
     },
   });
 
-  useEffect(() => {
-    if (!classId || !resourceId) return;
-    const channel = supabase.channel(`lesson-monitor-db:${classId}:${resourceId}`);
-    channel.on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'lesson_live_presence',
-        filter: `class_id=eq.${classId}`,
-      },
-      () => {
-        queryClient.invalidateQueries({ queryKey: ['lesson-monitor-presence', classId, resourceId] });
-      },
-    );
-    channel.subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [classId, queryClient, resourceId]);
-
-  useEffect(() => {
-    if (!resourceId) return;
-    const channel = supabase.channel(`lesson-monitor-submissions:${resourceId}`);
-    channel.on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'slide_submissions',
-      },
-      () => {
-        queryClient.invalidateQueries({ queryKey: ['lesson-monitor-resource-submissions', resourceId] });
-      },
-    );
-    channel.subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [queryClient, resourceId]);
+  // Both use the shared ref-counted channel registry (see use-realtime-invalidate.ts) rather
+  // than hand-rolled channels — this monitor hook is mounted from class-progress, which a
+  // teacher can reach while the Lessons page (with its own realtime-backed hooks for the same
+  // class/resource) is still mounted underneath it (expo-router keeps prior screens mounted),
+  // so a hand-rolled channel here would hit the exact same "two subscribers, one topic" crash
+  // already fixed for lesson_slides/slide_submissions grade-sync elsewhere.
+  useRealtimeInvalidate(
+    'lesson_live_presence',
+    classId ? `class_id=eq.${classId}` : null,
+    ['lesson-monitor-presence', classId, resourceId],
+    Boolean(classId) && Boolean(resourceId),
+  );
+  // Table-wide on purpose (no per-slide filter) — a teacher's monitor needs to react to any
+  // student's submission changing, and slide_submissions has no resource_id column to filter
+  // on directly without an `in.(...)` list of this resource's slide ids.
+  useRealtimeInvalidate(
+    'slide_submissions',
+    null,
+    ['lesson-monitor-resource-submissions', resourceId],
+    Boolean(resourceId),
+  );
 
   const slidesById = new Map((slidesQuery.data ?? []).map((slide) => [slide.id, slide]));
   const persistedByStudent = new Map((persistedQuery.data ?? []).map((row) => [row.student_id, row]));

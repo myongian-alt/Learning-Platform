@@ -75,6 +75,10 @@ const HIGHLIGHT_COLOR = '#facc15';
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2.5;
 const EMOJI_OPTIONS = ['😀', '🎉', '⭐', '✅', '❗', '❓', '👍', '👎', '❤️', '🔥', '💡', '📌'];
+// A student's draw/object/answer save is an upsert onto `slide_submissions`, gated by RLS on
+// the slide's `submissions_enabled` flag — this fires whenever that write is rejected (the
+// teacher hasn't turned submissions on for this slide) so the failure is never silent.
+const SUBMISSIONS_OFF_MESSAGE = "Ask your teacher to turn on activities for this slide first";
 const SHAPE_OPTIONS: { shape: SlideObjectShape; icon: keyof typeof Feather.glyphMap }[] = [
   { shape: 'rectangle', icon: 'square' },
   { shape: 'ellipse', icon: 'circle' },
@@ -365,7 +369,7 @@ function SlideStage({
       saveAnnotations.mutate({ id: slide.id, annotations: strokes });
     } else {
       onStudentActivity('drawing');
-      mySubmission.saveAnnotations.mutate(strokes);
+      mySubmission.saveAnnotations.mutate(strokes, { onError: () => showFlash(SUBMISSIONS_OFF_MESSAGE) });
     }
   };
 
@@ -379,7 +383,7 @@ function SlideStage({
       saveObjects.mutate({ id: slide.id, objects });
     } else {
       onStudentActivity('annotating');
-      mySubmission.saveObjects.mutate(objects);
+      mySubmission.saveObjects.mutate(objects, { onError: () => showFlash(SUBMISSIONS_OFF_MESSAGE) });
     }
   };
 
@@ -410,7 +414,7 @@ function SlideStage({
     const next = { ...myAnswers, [questionId]: value };
     setMyAnswers(next);
     onStudentActivity('answering');
-    mySubmission.saveAnswers.mutate(next);
+    mySubmission.saveAnswers.mutate(next, { onError: () => showFlash(SUBMISSIONS_OFF_MESSAGE) });
   };
 
   // Quiz/Blanks are alternate full-screen presentations of the same teacher-authored
